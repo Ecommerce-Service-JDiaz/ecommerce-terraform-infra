@@ -139,6 +139,38 @@ jobs:
             echo "environment=dev" >> $GITHUB_OUTPUT
           fi
 
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
+            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
+            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
+            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
+            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
+            echo "❌ Error: AZURE_TENANT_ID secret is missing"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
       - name: Terraform Init
         id: init
         run: terraform init
@@ -150,6 +182,7 @@ jobs:
           ARM_RESOURCE_GROUP_NAME: ${{ secrets.AZURE_STATE_RESOURCE_GROUP }}
           ARM_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}
           ARM_CONTAINER_NAME: ${{ secrets.AZURE_STATE_CONTAINER }}
+          ARM_STATE_KEY: terraform.tfstate
 
       - name: Terraform Plan
         id: plan
@@ -160,6 +193,14 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify Plan File
+        run: |
+          if [ ! -f tfplan ]; then
+            echo "❌ Error: Plan file (tfplan) was not created. Terraform plan must succeed before apply."
+            exit 1
+          fi
+          echo "✅ Plan file created successfully"
 
       - name: Terraform Apply
         id: apply
