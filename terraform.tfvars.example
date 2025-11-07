@@ -1,0 +1,41 @@
+# Ejemplo de configuración para terraform.tfvars
+# Copia este archivo a environments/{dev|stage|prod}/terraform.tfvars y ajusta los valores
+
+environment = "dev"  # dev, stage, o prod
+location    = "eastus2"
+
+resource_prefix = "ecommerce"
+cluster_name    = "aks-cluster"
+dns_prefix      = "ecommerce-dev"
+
+# Configuración del node pool
+node_pool_name    = "system"
+node_vm_size      = "Standard_B2s"  # Standard_B2s para dev/stage, Standard_DS2_v2 para prod
+node_disk_size_gb = 64              # 64GB para dev/stage, 128GB para prod
+node_min_count    = 2               # Mínimo de nodos
+node_max_count    = 4               # Máximo de nodos (2-4 para dev/stage, 2-5 para prod)
+
+# Auto-scaling
+enable_auto_scaling = true
+
+# Monitoring
+# Dev/Stage: false (monitoring básico integrado)
+# Prod: true (monitoring mejorado con Log Analytics)
+enable_log_analytics = false
+log_analytics_sku    = "PerGB2018"
+
+# Backup
+# Dev: false
+# Stage: true con frequency = "Weekly"
+# Prod: true con frequency = "Daily"
+enable_backup        = false
+backup_frequency     = "Weekly"  # Daily o Weekly
+backup_retention_days = 30
+
+# Tags
+tags = {
+  Environment = "dev"
+  Project     = "ecommerce"
+  ManagedBy   = "Terraform"
+}
+
