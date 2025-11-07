@@ -7,7 +7,7 @@ dns_prefix      = "ecommerce-prod"
 
 # Configuración del node pool - Prod
 node_pool_name    = "system"
-node_vm_size      = "Standard_DS2_v2"
+node_vm_size      = "Standard_D2s_v3"
 node_disk_size_gb = 128
 node_min_count    = 2
 node_max_count    = 5
