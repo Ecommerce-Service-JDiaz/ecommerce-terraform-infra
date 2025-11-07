@@ -11,6 +11,7 @@ on:
           - dev
           - stage
           - prod
+          - all
       confirm_destroy:
         description: 'Escribe "DESTROY" para confirmar'
         required: true
@@ -20,11 +21,12 @@ env:
   TF_VERSION: '1.6.0'
 
 jobs:
-  terraform-destroy:
-    name: Terraform Destroy
+  terraform-destroy-dev:
+    name: Destroy Dev
     runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'all'
     environment:
-      name: ${{ github.event.inputs.environment }}-destroy
+      name: dev-destroy
     
     steps:
       - name: Validate Destroy Confirmation
@@ -33,7 +35,7 @@ jobs:
             echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
             exit 1
           fi
-          echo "✅ Confirmación de destrucción recibida"
+          echo "✅ Confirmación de destrucción recibida para dev"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,7 +53,7 @@ jobs:
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=terraform.tfstate"
+            -backend-config="key=dev/terraform.tfstate"
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -61,7 +63,7 @@ jobs:
       - name: Terraform Plan Destroy
         id: plan-destroy
         run: |
-          terraform plan -destroy -var-file=environments/${{ github.event.inputs.environment }}/terraform.tfvars -out=tfdestroy
+          terraform plan -destroy -var-file=environments/dev/terraform.tfvars -out=tfdestroy
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -79,9 +81,140 @@ jobs:
 
       - name: Destroy Summary
         run: |
-          echo "## 🗑️ Infraestructura Destruida" >> $GITHUB_STEP_SUMMARY
+          echo "## 🗑️ Infraestructura Dev Destruida" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Entorno:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Entorno:** dev" >> $GITHUB_STEP_SUMMARY
           echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
 
+  terraform-destroy-stage:
+    name: Destroy Stage
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'stage' || github.event.inputs.environment == 'all'
+    environment:
+      name: stage-destroy
+    
+    steps:
+      - name: Validate Destroy Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
+            exit 1
+          fi
+          echo "✅ Confirmación de destrucción recibida para stage"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
+            -backend-config="key=stage/terraform.tfstate"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Plan Destroy
+        id: plan-destroy
+        run: |
+          terraform plan -destroy -var-file=environments/stage/terraform.tfvars -out=tfdestroy
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Destroy
+        id: destroy
+        run: terraform apply -auto-approve tfdestroy
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Destroy Summary
+        run: |
+          echo "## 🗑️ Infraestructura Stage Destruida" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Entorno:** stage" >> $GITHUB_STEP_SUMMARY
+          echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
+
+  terraform-destroy-prod:
+    name: Destroy Prod
+    runs-on: ubuntu-latest
+    if: github.event.inputs.environment == 'prod' || github.event.inputs.environment == 'all'
+    environment:
+      name: prod-destroy
+    
+    steps:
+      - name: Validate Destroy Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
+            exit 1
+          fi
+          echo "✅ Confirmación de destrucción recibida para prod"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
+            -backend-config="key=prod/terraform.tfstate"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Plan Destroy
+        id: plan-destroy
+        run: |
+          terraform plan -destroy -var-file=environments/prod/terraform.tfvars -out=tfdestroy
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Destroy
+        id: destroy
+        run: terraform apply -auto-approve tfdestroy
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Destroy Summary
+        run: |
+          echo "## 🗑️ Infraestructura Prod Destruida" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Entorno:** prod" >> $GITHUB_STEP_SUMMARY
+          echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
