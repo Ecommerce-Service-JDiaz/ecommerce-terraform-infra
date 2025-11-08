@@ -7,7 +7,7 @@ dns_prefix      = "ecommerce-stage"
 
 # Configuración del node pool - Stage
 node_pool_name    = "system"
-node_vm_size      = "Standard_B2s"
+node_vm_size      = "Standard_D2s_v3"
 node_disk_size_gb = 64
 node_min_count    = 2
 node_max_count    = 4
