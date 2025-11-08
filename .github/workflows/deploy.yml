@@ -145,17 +145,36 @@ jobs:
       - name: Terraform Init
         id: init
         run: |
+          echo "🔧 Inicializando Terraform con backend remoto..."
           terraform init \
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
             -backend-config="key=dev/terraform.tfstate" \
             -reconfigure
+          echo "✅ Terraform inicializado"
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify Backend Configuration
+        run: |
+          echo "🔍 Verificando configuración del backend..."
+          if [ -f .terraform/terraform.tfstate ]; then
+            echo "✅ Backend configurado correctamente"
+            echo "📋 Información del backend:"
+            cat .terraform/terraform.tfstate | grep -A 10 "backend" || echo "Backend configurado (detalles en logs de init)"
+          else
+            echo "⚠️ No se encontró archivo de estado del backend"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Check State
         run: |
@@ -241,7 +260,15 @@ jobs:
         id: apply
         run: |
           if [ -f tfplan ]; then
+            echo "🚀 Aplicando cambios de Terraform..."
             terraform apply -auto-approve tfplan
+            APPLY_EXIT_CODE=$?
+            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
+              echo "✅ Cambios aplicados exitosamente"
+            else
+              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
+              exit $APPLY_EXIT_CODE
+            fi
           else
             echo "ℹ️ No hay cambios que aplicar - saltando apply"
           fi
@@ -250,6 +277,20 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify State Saved to Backend
+        run: |
+          echo "🔍 Verificando que el estado se guardó en el backend remoto..."
+          echo "📋 Listando recursos en el estado:"
+          terraform state list
+          echo ""
+          echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/dev/terraform.tfstate"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Output
         id: output
@@ -296,17 +337,36 @@ jobs:
       - name: Terraform Init
         id: init
         run: |
+          echo "🔧 Inicializando Terraform con backend remoto..."
           terraform init \
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
             -backend-config="key=stage/terraform.tfstate" \
             -reconfigure
+          echo "✅ Terraform inicializado"
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify Backend Configuration
+        run: |
+          echo "🔍 Verificando configuración del backend..."
+          if [ -f .terraform/terraform.tfstate ]; then
+            echo "✅ Backend configurado correctamente"
+            echo "📋 Información del backend:"
+            cat .terraform/terraform.tfstate | grep -A 10 "backend" || echo "Backend configurado (detalles en logs de init)"
+          else
+            echo "⚠️ No se encontró archivo de estado del backend"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Check State
         run: |
@@ -392,7 +452,15 @@ jobs:
         id: apply
         run: |
           if [ -f tfplan ]; then
+            echo "🚀 Aplicando cambios de Terraform..."
             terraform apply -auto-approve tfplan
+            APPLY_EXIT_CODE=$?
+            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
+              echo "✅ Cambios aplicados exitosamente"
+            else
+              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
+              exit $APPLY_EXIT_CODE
+            fi
           else
             echo "ℹ️ No hay cambios que aplicar - saltando apply"
           fi
@@ -401,6 +469,20 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify State Saved to Backend
+        run: |
+          echo "🔍 Verificando que el estado se guardó en el backend remoto..."
+          echo "📋 Listando recursos en el estado:"
+          terraform state list
+          echo ""
+          echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/stage/terraform.tfstate"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Output
         id: output
@@ -447,17 +529,36 @@ jobs:
       - name: Terraform Init
         id: init
         run: |
+          echo "🔧 Inicializando Terraform con backend remoto..."
           terraform init \
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
             -backend-config="key=prod/terraform.tfstate" \
             -reconfigure
+          echo "✅ Terraform inicializado"
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify Backend Configuration
+        run: |
+          echo "🔍 Verificando configuración del backend..."
+          if [ -f .terraform/terraform.tfstate ]; then
+            echo "✅ Backend configurado correctamente"
+            echo "📋 Información del backend:"
+            cat .terraform/terraform.tfstate | grep -A 10 "backend" || echo "Backend configurado (detalles en logs de init)"
+          else
+            echo "⚠️ No se encontró archivo de estado del backend"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Check State
         run: |
@@ -543,7 +644,15 @@ jobs:
         id: apply
         run: |
           if [ -f tfplan ]; then
+            echo "🚀 Aplicando cambios de Terraform..."
             terraform apply -auto-approve tfplan
+            APPLY_EXIT_CODE=$?
+            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
+              echo "✅ Cambios aplicados exitosamente"
+            else
+              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
+              exit $APPLY_EXIT_CODE
+            fi
           else
             echo "ℹ️ No hay cambios que aplicar - saltando apply"
           fi
@@ -552,6 +661,20 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Verify State Saved to Backend
+        run: |
+          echo "🔍 Verificando que el estado se guardó en el backend remoto..."
+          echo "📋 Listando recursos en el estado:"
+          terraform state list
+          echo ""
+          echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/prod/terraform.tfstate"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Output
         id: output
