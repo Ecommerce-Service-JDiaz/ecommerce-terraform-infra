@@ -9,8 +9,8 @@ dns_prefix      = "ecommerce-stage"
 node_pool_name    = "system"
 node_vm_size      = "Standard_D2s_v3"
 node_disk_size_gb = 64
-node_min_count    = 2
-node_max_count    = 4
+node_min_count    = 1
+node_max_count    = 1
 
 # Auto-scaling
 enable_auto_scaling = true

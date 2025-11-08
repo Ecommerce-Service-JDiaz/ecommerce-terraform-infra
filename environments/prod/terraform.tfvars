@@ -10,7 +10,7 @@ node_pool_name    = "system"
 node_vm_size      = "Standard_F2s_v2"
 node_disk_size_gb = 128
 node_min_count    = 2
-node_max_count    = 5
+node_max_count    = 2
 
 # Auto-scaling
 enable_auto_scaling = true
