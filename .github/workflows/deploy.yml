@@ -446,6 +446,93 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Check and Import Existing Resources
+        run: |
+          echo "🔍 Verificando si hay recursos existentes que necesitan ser importados..."
+          
+          ENV="stage"
+          RG_NAME="ecommerce-rg-${ENV}"
+          VNET_NAME="ecommerce-vnet-${ENV}"
+          SUBNET_AKS_NAME="ecommerce-subnet-aks-${ENV}"
+          SUBNET_NODES_NAME="ecommerce-subnet-nodes-${ENV}"
+          AKS_CLUSTER_NAME="aks-cluster-${ENV}"
+          
+          # Verificar si el Resource Group existe
+          if az group show --name "$RG_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+            echo "✅ Resource Group existe: $RG_NAME"
+            
+            # Verificar si el AKS Cluster existe
+            if az aks show --resource-group "$RG_NAME" --name "$AKS_CLUSTER_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+              echo "⚠️ AKS Cluster existe pero puede no estar en el estado de Terraform"
+              echo "🔄 Verificando estado actual de Terraform..."
+              
+              # Verificar si el recurso está en el estado
+              if ! terraform state show module.aks.azurerm_kubernetes_cluster.main 2>/dev/null | grep -q .; then
+                echo "📦 El AKS Cluster no está en el estado - importando recursos..."
+                
+                # Importar Resource Group
+                RG_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME"
+                echo "📦 Importando Resource Group: $RG_NAME"
+                terraform import module.aks.azurerm_resource_group.main "$RG_ID" 2>&1 || echo "Resource Group ya en estado o error"
+                
+                # Importar Virtual Network
+                VNET_ID=$(az network vnet show --resource-group "$RG_NAME" --name "$VNET_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$VNET_ID" ]; then
+                  echo "🌐 Importando Virtual Network: $VNET_NAME"
+                  terraform import module.aks.azurerm_virtual_network.main "$VNET_ID" 2>&1 || echo "VNet ya en estado o error"
+                fi
+                
+                # Importar Subnets
+                SUBNET_AKS_ID=$(az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$VNET_NAME" --name "$SUBNET_AKS_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$SUBNET_AKS_ID" ]; then
+                  echo "🔗 Importando Subnet AKS: $SUBNET_AKS_NAME"
+                  terraform import module.aks.azurerm_subnet.aks "$SUBNET_AKS_ID" 2>&1 || echo "Subnet AKS ya en estado o error"
+                fi
+                
+                SUBNET_NODES_ID=$(az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$VNET_NAME" --name "$SUBNET_NODES_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$SUBNET_NODES_ID" ]; then
+                  echo "🔗 Importando Subnet Nodes: $SUBNET_NODES_NAME"
+                  terraform import module.aks.azurerm_subnet.nodes "$SUBNET_NODES_ID" 2>&1 || echo "Subnet Nodes ya en estado o error"
+                fi
+                
+                # Importar AKS Cluster
+                AKS_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME/providers/Microsoft.ContainerService/managedClusters/$AKS_CLUSTER_NAME"
+                echo "☸️ Importando AKS Cluster: $AKS_CLUSTER_NAME"
+                terraform import module.aks.azurerm_kubernetes_cluster.main "$AKS_ID" 2>&1 || echo "AKS Cluster ya en estado o error"
+                
+                # Importar Log Analytics Workspace (si existe)
+                LAW_NAME="ecommerce-law-${ENV}"
+                LAW_ID=$(az monitor log-analytics workspace show --resource-group "$RG_NAME" --workspace-name "$LAW_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$LAW_ID" ]; then
+                  echo "📊 Importando Log Analytics Workspace: $LAW_NAME"
+                  terraform import 'module.aks.azurerm_log_analytics_workspace.main[0]' "$LAW_ID" 2>&1 || echo "Log Analytics ya en estado o error"
+                fi
+                
+                # Importar Recovery Services Vault (si existe)
+                RSV_NAME="ecommerce-rsv-${ENV}"
+                RSV_ID=$(az backup vault show --resource-group "$RG_NAME" --name "$RSV_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$RSV_ID" ]; then
+                  echo "💾 Importando Recovery Services Vault: $RSV_NAME"
+                  terraform import module.aks.azurerm_recovery_services_vault.main[0] "$RSV_ID" 2>&1 || echo "Recovery Services Vault ya en estado o error"
+                fi
+                
+                echo "✅ Recursos importados - el estado ahora está sincronizado"
+              else
+                echo "✅ AKS Cluster ya está en el estado de Terraform"
+              fi
+            else
+              echo "ℹ️ AKS Cluster no existe en Azure - será creado"
+            fi
+          else
+            echo "ℹ️ Resource Group no existe - será creado"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Plan
         id: plan
         run: |
@@ -686,6 +773,93 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Check and Import Existing Resources
+        run: |
+          echo "🔍 Verificando si hay recursos existentes que necesitan ser importados..."
+          
+          ENV="prod"
+          RG_NAME="ecommerce-rg-${ENV}"
+          VNET_NAME="ecommerce-vnet-${ENV}"
+          SUBNET_AKS_NAME="ecommerce-subnet-aks-${ENV}"
+          SUBNET_NODES_NAME="ecommerce-subnet-nodes-${ENV}"
+          AKS_CLUSTER_NAME="aks-cluster-${ENV}"
+          
+          # Verificar si el Resource Group existe
+          if az group show --name "$RG_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+            echo "✅ Resource Group existe: $RG_NAME"
+            
+            # Verificar si el AKS Cluster existe
+            if az aks show --resource-group "$RG_NAME" --name "$AKS_CLUSTER_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+              echo "⚠️ AKS Cluster existe pero puede no estar en el estado de Terraform"
+              echo "🔄 Verificando estado actual de Terraform..."
+              
+              # Verificar si el recurso está en el estado
+              if ! terraform state show module.aks.azurerm_kubernetes_cluster.main 2>/dev/null | grep -q .; then
+                echo "📦 El AKS Cluster no está en el estado - importando recursos..."
+                
+                # Importar Resource Group
+                RG_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME"
+                echo "📦 Importando Resource Group: $RG_NAME"
+                terraform import module.aks.azurerm_resource_group.main "$RG_ID" 2>&1 || echo "Resource Group ya en estado o error"
+                
+                # Importar Virtual Network
+                VNET_ID=$(az network vnet show --resource-group "$RG_NAME" --name "$VNET_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$VNET_ID" ]; then
+                  echo "🌐 Importando Virtual Network: $VNET_NAME"
+                  terraform import module.aks.azurerm_virtual_network.main "$VNET_ID" 2>&1 || echo "VNet ya en estado o error"
+                fi
+                
+                # Importar Subnets
+                SUBNET_AKS_ID=$(az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$VNET_NAME" --name "$SUBNET_AKS_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$SUBNET_AKS_ID" ]; then
+                  echo "🔗 Importando Subnet AKS: $SUBNET_AKS_NAME"
+                  terraform import module.aks.azurerm_subnet.aks "$SUBNET_AKS_ID" 2>&1 || echo "Subnet AKS ya en estado o error"
+                fi
+                
+                SUBNET_NODES_ID=$(az network vnet subnet show --resource-group "$RG_NAME" --vnet-name "$VNET_NAME" --name "$SUBNET_NODES_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$SUBNET_NODES_ID" ]; then
+                  echo "🔗 Importando Subnet Nodes: $SUBNET_NODES_NAME"
+                  terraform import module.aks.azurerm_subnet.nodes "$SUBNET_NODES_ID" 2>&1 || echo "Subnet Nodes ya en estado o error"
+                fi
+                
+                # Importar AKS Cluster
+                AKS_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME/providers/Microsoft.ContainerService/managedClusters/$AKS_CLUSTER_NAME"
+                echo "☸️ Importando AKS Cluster: $AKS_CLUSTER_NAME"
+                terraform import module.aks.azurerm_kubernetes_cluster.main "$AKS_ID" 2>&1 || echo "AKS Cluster ya en estado o error"
+                
+                # Importar Log Analytics Workspace (si existe)
+                LAW_NAME="ecommerce-law-${ENV}"
+                LAW_ID=$(az monitor log-analytics workspace show --resource-group "$RG_NAME" --workspace-name "$LAW_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$LAW_ID" ]; then
+                  echo "📊 Importando Log Analytics Workspace: $LAW_NAME"
+                  terraform import 'module.aks.azurerm_log_analytics_workspace.main[0]' "$LAW_ID" 2>&1 || echo "Log Analytics ya en estado o error"
+                fi
+                
+                # Importar Recovery Services Vault (si existe)
+                RSV_NAME="ecommerce-rsv-${ENV}"
+                RSV_ID=$(az backup vault show --resource-group "$RG_NAME" --name "$RSV_NAME" --query id -o tsv 2>/dev/null)
+                if [ -n "$RSV_ID" ]; then
+                  echo "💾 Importando Recovery Services Vault: $RSV_NAME"
+                  terraform import module.aks.azurerm_recovery_services_vault.main[0] "$RSV_ID" 2>&1 || echo "Recovery Services Vault ya en estado o error"
+                fi
+                
+                echo "✅ Recursos importados - el estado ahora está sincronizado"
+              else
+                echo "✅ AKS Cluster ya está en el estado de Terraform"
+              fi
+            else
+              echo "ℹ️ AKS Cluster no existe en Azure - será creado"
+            fi
+          else
+            echo "ℹ️ Resource Group no existe - será creado"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Plan
         id: plan
