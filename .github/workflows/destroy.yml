@@ -46,6 +46,38 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
+            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
+            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
+            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
+            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
+            echo "❌ Error: AZURE_TENANT_ID secret is missing"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
       - name: Terraform Init
         id: init
         run: |
@@ -53,26 +85,43 @@ jobs:
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=dev/terraform.tfstate"
+            -backend-config="key=dev/terraform.tfstate" \
+            -reconfigure
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
-      - name: Terraform Plan Destroy
-        id: plan-destroy
+      - name: Check State
         run: |
-          terraform plan -destroy -var-file=environments/dev/terraform.tfvars -out=tfdestroy
+          if terraform state list 2>/dev/null | grep -q .; then
+            echo "✅ Estado encontrado con recursos:"
+            terraform state list
+          else
+            echo "⚠️ Estado vacío o no existe - no hay nada que destruir"
+            echo "✅ Saltando destroy (no hay recursos en el estado)"
+            exit 0
+          fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Destroy
         id: destroy
-        run: terraform apply -auto-approve tfdestroy
+        run: |
+          echo "🗑️ Iniciando destrucción de infraestructura dev..."
+          terraform destroy -auto-approve -var-file=environments/dev/terraform.tfvars
+          DESTROY_EXIT_CODE=$?
+          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
+            echo "✅ Destrucción completada exitosamente"
+          else
+            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
+            exit $DESTROY_EXIT_CODE
+          fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -112,6 +161,38 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
+            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
+            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
+            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
+            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
+            echo "❌ Error: AZURE_TENANT_ID secret is missing"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
       - name: Terraform Init
         id: init
         run: |
@@ -119,26 +200,43 @@ jobs:
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=stage/terraform.tfstate"
+            -backend-config="key=stage/terraform.tfstate" \
+            -reconfigure
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
-      - name: Terraform Plan Destroy
-        id: plan-destroy
+      - name: Check State
         run: |
-          terraform plan -destroy -var-file=environments/stage/terraform.tfvars -out=tfdestroy
+          if terraform state list 2>/dev/null | grep -q .; then
+            echo "✅ Estado encontrado con recursos:"
+            terraform state list
+          else
+            echo "⚠️ Estado vacío o no existe - no hay nada que destruir"
+            echo "✅ Saltando destroy (no hay recursos en el estado)"
+            exit 0
+          fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Destroy
         id: destroy
-        run: terraform apply -auto-approve tfdestroy
+        run: |
+          echo "🗑️ Iniciando destrucción de infraestructura stage..."
+          terraform destroy -auto-approve -var-file=environments/stage/terraform.tfvars
+          DESTROY_EXIT_CODE=$?
+          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
+            echo "✅ Destrucción completada exitosamente"
+          else
+            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
+            exit $DESTROY_EXIT_CODE
+          fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -178,6 +276,38 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
+            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
+            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
+            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
+            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
+            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
+            echo "❌ Error: AZURE_TENANT_ID secret is missing"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
       - name: Terraform Init
         id: init
         run: |
@@ -185,26 +315,43 @@ jobs:
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=prod/terraform.tfstate"
+            -backend-config="key=prod/terraform.tfstate" \
+            -reconfigure
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
-      - name: Terraform Plan Destroy
-        id: plan-destroy
+      - name: Check State
         run: |
-          terraform plan -destroy -var-file=environments/prod/terraform.tfvars -out=tfdestroy
+          if terraform state list 2>/dev/null | grep -q .; then
+            echo "✅ Estado encontrado con recursos:"
+            terraform state list
+          else
+            echo "⚠️ Estado vacío o no existe - no hay nada que destruir"
+            echo "✅ Saltando destroy (no hay recursos en el estado)"
+            exit 0
+          fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
 
       - name: Terraform Destroy
         id: destroy
-        run: terraform apply -auto-approve tfdestroy
+        run: |
+          echo "🗑️ Iniciando destrucción de infraestructura prod..."
+          terraform destroy -auto-approve -var-file=environments/prod/terraform.tfvars
+          DESTROY_EXIT_CODE=$?
+          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
+            echo "✅ Destrucción completada exitosamente"
+          else
+            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
+            exit $DESTROY_EXIT_CODE
+          fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
