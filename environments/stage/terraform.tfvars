@@ -6,11 +6,12 @@ cluster_name    = "aks-cluster"
 dns_prefix      = "ecommerce-stage"
 
 # Configuración del node pool - Stage
+# Nota: Cuota limitada a 6 vCPUs. Usando Standard_F2s_v2 (2 vCPUs) para permitir escalado hasta 3 nodos
 node_pool_name    = "system"
-node_vm_size      = "Standard_F16s_v2"  # 16 vCPUs, 32 GB RAM - Alta performance
+node_vm_size      = "Standard_F2s_v2"  # 2 vCPUs, 4 GB RAM - Optimizada para compute (ajustada a cuota)
 node_disk_size_gb = 256
-node_min_count    = 3
-node_max_count    = 6
+node_min_count    = 1
+node_max_count    = 3  # Máximo 3 nodos × 2 vCPUs = 6 vCPUs (límite de cuota)
 
 # Auto-scaling
 enable_auto_scaling = true

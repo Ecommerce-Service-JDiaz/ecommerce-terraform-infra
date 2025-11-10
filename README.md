@@ -33,8 +33,8 @@ ecommerce-terraform-infra/
 ## Características por Entorno
 
 ### Dev
-- **Nodos**: 3-6 (min: 3, max: 6)
-- **VM Size**: Standard_F8s_v2 (8 vCPUs, 16 GB RAM - Optimizada para compute)
+- **Nodos**: 1-3 (min: 1, max: 3) - Ajustado a cuota de 6 vCPUs
+- **VM Size**: Standard_F2s_v2 (2 vCPUs, 4 GB RAM - Optimizada para compute)
 - **Disk Size**: 128GB
 - **Auto-scaling**: Habilitado
 - **Monitoring**: Azure Monitor básico (integrado)
@@ -42,8 +42,8 @@ ecommerce-terraform-infra/
 - **SLA**: N/A
 
 ### Stage
-- **Nodos**: 3-6 (min: 3, max: 6)
-- **VM Size**: Standard_F16s_v2 (16 vCPUs, 32 GB RAM - Alta performance)
+- **Nodos**: 1-3 (min: 1, max: 3) - Ajustado a cuota de 6 vCPUs
+- **VM Size**: Standard_F2s_v2 (2 vCPUs, 4 GB RAM - Optimizada para compute)
 - **Disk Size**: 256GB
 - **Auto-scaling**: Habilitado
 - **Monitoring**: Azure Monitor básico (integrado)
@@ -51,13 +51,15 @@ ecommerce-terraform-infra/
 - **SLA**: 95%
 
 ### Prod
-- **Nodos**: 3-6 (min: 3, max: 6)
-- **VM Size**: Standard_F16s_v2 (16 vCPUs, 32 GB RAM - Máxima performance)
+- **Nodos**: 1-3 (min: 1, max: 3) - Ajustado a cuota de 6 vCPUs
+- **VM Size**: Standard_F2s_v2 (2 vCPUs, 4 GB RAM - Optimizada para compute)
 - **Disk Size**: 256GB
 - **Auto-scaling**: Habilitado
 - **Monitoring**: Azure Monitor mejorado (Log Analytics Workspace)
 - **Backup**: Diario
 - **SLA**: 99.9%
+
+> **⚠️ Nota sobre Cuota**: La configuración actual está ajustada a una cuota de 6 vCPUs. Si tu cuota es por ambiente, puedes aumentar los valores. Si es cuota total, solo un ambiente puede estar desplegado a la vez con esta configuración.
 
 ## Requisitos Previos
 
