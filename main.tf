@@ -66,23 +66,42 @@ module "aks" {
   tags = var.tags
 }
 
+# Data source para obtener credenciales del cluster AKS si existe (para cuando create_aks = false pero hay recursos en el estado)
+# Solo se usa cuando environment no es "global" (porque global no tiene cluster AKS)
+data "azurerm_kubernetes_cluster" "existing" {
+  count               = var.create_aks ? 0 : (var.environment != "global" ? 1 : 0)
+  name                = "${var.cluster_name}-${var.environment}"
+  resource_group_name = "${var.resource_prefix}-rg-${var.environment}"
+}
+
 # Provider de Kubernetes - Usa las credenciales del cluster AKS
-# Solo se configura cuando create_aks es true y el módulo AKS existe
-# Nota: Cuando create_aks es false, este provider no se usará (no hay recursos de Kubernetes)
-# Usamos un alias para evitar conflictos cuando no hay cluster
+# Siempre está disponible para manejar recursos existentes en el estado
+# Usamos un alias para evitar conflictos
 provider "kubernetes" {
   alias = "aks"
   
-  # Solo configurar cuando create_aks es true
-  # Cuando create_aks es false, el módulo AKS no existe, por lo que usamos valores null
-  # y config_path para que el provider no falle (aunque no se usará)
-  host                   = var.create_aks ? (length(module.aks) > 0 ? module.aks[0].host : null) : null
-  client_certificate     = var.create_aks ? (length(module.aks) > 0 ? base64decode(module.aks[0].client_certificate) : null) : null
-  client_key             = var.create_aks ? (length(module.aks) > 0 ? base64decode(module.aks[0].client_key) : null) : null
-  cluster_ca_certificate = var.create_aks ? (length(module.aks) > 0 ? base64decode(module.aks[0].cluster_ca_certificate) : null) : null
+  # Si create_aks es true, usar credenciales del módulo AKS
+  # Si create_aks es false y environment no es "global", intentar usar data source del cluster existente
+  # Si no hay cluster disponible, usar config_path (para limpiar recursos del estado si es necesario)
+  host = var.create_aks && length(module.aks) > 0 ? module.aks[0].host : (
+    var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0 ? data.azurerm_kubernetes_cluster.existing[0].kube_config[0].host : null
+  )
   
-  # Si no hay cluster, intentar usar kubeconfig del sistema (no se usará porque no hay recursos)
-  config_path = var.create_aks ? null : "~/.kube/config"
+  client_certificate = var.create_aks && length(module.aks) > 0 ? base64decode(module.aks[0].client_certificate) : (
+    var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0 ? base64decode(data.azurerm_kubernetes_cluster.existing[0].kube_config[0].client_certificate) : null
+  )
+  
+  client_key = var.create_aks && length(module.aks) > 0 ? base64decode(module.aks[0].client_key) : (
+    var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0 ? base64decode(data.azurerm_kubernetes_cluster.existing[0].kube_config[0].client_key) : null
+  )
+  
+  cluster_ca_certificate = var.create_aks && length(module.aks) > 0 ? base64decode(module.aks[0].cluster_ca_certificate) : (
+    var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0 ? base64decode(data.azurerm_kubernetes_cluster.existing[0].kube_config[0].cluster_ca_certificate) : null
+  )
+  
+  # Si no hay cluster disponible, usar kubeconfig del sistema (para limpiar recursos del estado si es necesario)
+  # Esto permite que el provider esté disponible incluso cuando no hay cluster, para manejar recursos existentes en el estado
+  config_path = (var.create_aks && length(module.aks) > 0) || (var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0) ? null : "~/.kube/config"
 }
 
 # ConfigMaps para variables de entorno de Spring Boot
