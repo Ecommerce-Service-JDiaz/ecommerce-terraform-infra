@@ -479,13 +479,25 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Output
-        id: output
-        run: terraform output -json
+        id: terraform_output
+        run: |
+          terraform output -json > terraform_output.json
+          cat terraform_output.json
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Parse Terraform Outputs
+        id: parse_outputs
+        run: |
+          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
+          CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
+          echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "Resource Group: $RESOURCE_GROUP"
+          echo "Cluster Name: $CLUSTER_NAME"
 
       - name: Install kubectl
         run: |
@@ -496,8 +508,8 @@ jobs:
       - name: Get AKS Credentials
         run: |
           az aks get-credentials \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_DEV }} \
-            --name ${{ secrets.AKS_CLUSTER_NAME_DEV }} \
+            --resource-group "${{ steps.parse_outputs.outputs.resource_group }}" \
+            --name "${{ steps.parse_outputs.outputs.cluster_name }}" \
             --overwrite-existing
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -700,13 +712,25 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Output
-        id: output
-        run: terraform output -json
+        id: terraform_output
+        run: |
+          terraform output -json > terraform_output.json
+          cat terraform_output.json
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Parse Terraform Outputs
+        id: parse_outputs
+        run: |
+          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
+          CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
+          echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "Resource Group: $RESOURCE_GROUP"
+          echo "Cluster Name: $CLUSTER_NAME"
 
       - name: Install kubectl
         run: |
@@ -717,8 +741,8 @@ jobs:
       - name: Get AKS Credentials
         run: |
           az aks get-credentials \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_STAGE }} \
-            --name ${{ secrets.AKS_CLUSTER_NAME_STAGE }} \
+            --resource-group "${{ steps.parse_outputs.outputs.resource_group }}" \
+            --name "${{ steps.parse_outputs.outputs.cluster_name }}" \
             --overwrite-existing
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -921,13 +945,25 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Output
-        id: output
-        run: terraform output -json
+        id: terraform_output
+        run: |
+          terraform output -json > terraform_output.json
+          cat terraform_output.json
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Parse Terraform Outputs
+        id: parse_outputs
+        run: |
+          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
+          CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
+          echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
+          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "Resource Group: $RESOURCE_GROUP"
+          echo "Cluster Name: $CLUSTER_NAME"
 
       - name: Install kubectl
         run: |
@@ -938,8 +974,8 @@ jobs:
       - name: Get AKS Credentials
         run: |
           az aks get-credentials \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_PROD }} \
-            --name ${{ secrets.AKS_CLUSTER_NAME_PROD }} \
+            --resource-group "${{ steps.parse_outputs.outputs.resource_group }}" \
+            --name "${{ steps.parse_outputs.outputs.cluster_name }}" \
             --overwrite-existing
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
