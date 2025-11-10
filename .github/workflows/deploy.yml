@@ -156,30 +156,45 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Terraform Plan
+        id: plan
         run: |
-          terraform plan -var-file=environments/global/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
+          set +e
+          terraform plan -var-file=environments/global/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
+          PLAN_EXIT_CODE=${PIPESTATUS[0]}
+          
           if [ "$PLAN_EXIT_CODE" = "1" ]; then
             echo "❌ Error en el plan"
             cat plan_output.txt
             exit 1
           elif [ "$PLAN_EXIT_CODE" = "2" ]; then
             echo "✅ Plan exitoso - hay cambios que aplicar"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "✅ Plan exitoso - no hay cambios"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            rm -f tfplan
           fi
+          set -e
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
 
       - name: Terraform Apply
         run: |
           if [ -f tfplan ]; then
+            echo "🚀 Aplicando cambios de Terraform..."
             terraform apply -auto-approve tfplan
+            APPLY_EXIT_CODE=$?
+            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
+              echo "✅ Cambios aplicados exitosamente"
+            else
+              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
+              exit $APPLY_EXIT_CODE
+            fi
           else
-            echo "ℹ️ No hay cambios que aplicar"
+            echo "ℹ️ No hay cambios que aplicar - saltando apply"
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}

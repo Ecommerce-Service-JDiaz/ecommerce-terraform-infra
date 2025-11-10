@@ -67,12 +67,22 @@ module "aks" {
 }
 
 # Provider de Kubernetes - Usa las credenciales del cluster AKS
-# Se configura dinámicamente cuando el cluster AKS está disponible
+# Solo se configura cuando create_aks es true y el módulo AKS existe
+# Nota: Cuando create_aks es false, este provider no se usará (no hay recursos de Kubernetes)
+# Usamos un alias para evitar conflictos cuando no hay cluster
 provider "kubernetes" {
-  host                   = var.create_aks ? try(module.aks[0].host, "") : ""
-  client_certificate     = var.create_aks ? try(base64decode(module.aks[0].client_certificate), "") : ""
-  client_key             = var.create_aks ? try(base64decode(module.aks[0].client_key), "") : ""
-  cluster_ca_certificate = var.create_aks ? try(base64decode(module.aks[0].cluster_ca_certificate), "") : ""
+  alias = "aks"
+  
+  # Solo configurar cuando create_aks es true
+  # Cuando create_aks es false, el módulo AKS no existe, por lo que usamos valores null
+  # y config_path para que el provider no falle (aunque no se usará)
+  host                   = var.create_aks ? (length(module.aks) > 0 ? module.aks[0].host : null) : null
+  client_certificate     = var.create_aks ? (length(module.aks) > 0 ? base64decode(module.aks[0].client_certificate) : null) : null
+  client_key             = var.create_aks ? (length(module.aks) > 0 ? base64decode(module.aks[0].client_key) : null) : null
+  cluster_ca_certificate = var.create_aks ? (length(module.aks) > 0 ? base64decode(module.aks[0].cluster_ca_certificate) : null) : null
+  
+  # Si no hay cluster, intentar usar kubeconfig del sistema (no se usará porque no hay recursos)
+  config_path = var.create_aks ? null : "~/.kube/config"
 }
 
 # ConfigMaps para variables de entorno de Spring Boot

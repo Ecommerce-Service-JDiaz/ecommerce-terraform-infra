@@ -2,6 +2,8 @@
 # Estas variables se usarán en los deployments de las aplicaciones Spring Boot
 
 resource "kubernetes_config_map" "spring_env" {
+  provider = kubernetes.aks
+  
   metadata {
     name      = "spring-env-config"
     namespace = "default"
