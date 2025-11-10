@@ -80,6 +80,11 @@ jobs:
             -p "$ARM_CLIENT_SECRET" \
             --tenant "$ARM_TENANT_ID" \
             --output none
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Get Service Principal Object ID
         id: sp_object_id
@@ -87,6 +92,11 @@ jobs:
           SP_OBJECT_ID=$(az ad sp show --id "$ARM_CLIENT_ID" --query id -o tsv)
           echo "object_id=$SP_OBJECT_ID" >> $GITHUB_OUTPUT
           echo "Service Principal Object ID: $SP_OBJECT_ID"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Terraform Init
         run: |
@@ -317,7 +327,11 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
-          terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
+          set +e
+          terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
+          PLAN_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          
           if [ "$PLAN_EXIT_CODE" = "1" ]; then
             if grep -q "already exists" plan_output.txt; then
               echo "⚠️ Detectados recursos existentes que no están en el estado"
@@ -332,7 +346,10 @@ jobs:
               fi
               
               echo "🔄 Re-ejecutando plan después de importar..."
-              terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
+              set +e
+              terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
+              PLAN_EXIT_CODE=${PIPESTATUS[0]}
+              set -e
               if [ "$PLAN_EXIT_CODE" = "1" ] && grep -q "already exists" plan_output.txt; then
                 echo "ℹ️ Algunos recursos aún existen pero no se pueden importar automáticamente"
                 echo "✅ Continuando sin cambios (los recursos ya están desplegados)"
@@ -341,13 +358,29 @@ jobs:
               fi
             else
               echo "❌ Error en el plan que no es por recursos existentes"
+              echo "📋 Mostrando salida completa del plan:"
               cat plan_output.txt
               exit 1
             fi
           elif [ "$PLAN_EXIT_CODE" = "2" ]; then
             echo "✅ Plan exitoso - hay cambios que aplicar"
-          else
+            # Verificar que el plan file es válido
+            if terraform show -json tfplan > /dev/null 2>&1; then
+              echo "✅ Plan file válido"
+            else
+              echo "❌ Error: El plan file está corrupto o incompleto"
+              echo "📋 Mostrando salida del plan:"
+              cat plan_output.txt
+              exit 1
+            fi
+          elif [ "$PLAN_EXIT_CODE" = "0" ]; then
             echo "✅ Plan exitoso - no hay cambios (la infraestructura está actualizada)"
+            rm -f tfplan
+          else
+            echo "⚠️ Código de salida inesperado: $PLAN_EXIT_CODE"
+            echo "📋 Mostrando salida del plan:"
+            cat plan_output.txt
+            exit 1
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -363,7 +396,17 @@ jobs:
             echo "✅ Saltando apply (no se requiere acción)"
             exit 0
           fi
-          echo "✅ Plan file creado - hay cambios que aplicar"
+          
+          # Verificar que el plan es válido
+          echo "🔍 Verificando que el plan es válido..."
+          if terraform show -json tfplan > /dev/null 2>&1; then
+            echo "✅ Plan file válido - hay cambios que aplicar"
+          else
+            echo "❌ Error: El plan file está corrupto o incompleto"
+            echo "📋 Intentando mostrar información del plan:"
+            terraform show tfplan 2>&1 | head -100 || echo "No se puede mostrar el plan"
+            exit 1
+          fi
 
       - name: Terraform Apply
         id: apply
