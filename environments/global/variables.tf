@@ -1,11 +1,13 @@
 variable "resource_prefix" {
   description = "Prefijo para los nombres de los recursos"
   type        = string
+  default     = "ecommerce"
 }
 
 variable "location" {
   description = "Región de Azure donde se desplegarán los recursos"
   type        = string
+  default     = "eastus2"
 }
 
 variable "tenant_id" {

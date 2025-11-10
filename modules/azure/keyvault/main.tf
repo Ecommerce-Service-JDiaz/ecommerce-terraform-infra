@@ -1,46 +1,34 @@
-# Azure Key Vault - Global para todos los ambientes
-resource "azurerm_key_vault" "main" {
-  name                = var.key_vault_name
-  location            = var.location
-  resource_group_name = var.resource_group_name
+# Resource Group Global para Key Vault
+resource "azurerm_resource_group" "global" {
+  name     = "${var.resource_prefix}-rg-global"
+  location = var.location
+
+  tags = merge(
+    var.tags,
+    {
+      Environment = "global"
+      ManagedBy   = "Terraform"
+      Purpose     = "KeyVault"
+    }
+  )
+}
+
+# Azure Key Vault Global
+resource "azurerm_key_vault" "global" {
+  name                = "${replace(var.resource_prefix, "-", "")}kv${substr(md5("${var.resource_prefix}global"), 0, 4)}"
+  location            = azurerm_resource_group.global.location
+  resource_group_name = azurerm_resource_group.global.name
   tenant_id           = var.tenant_id
+  sku_name            = "standard"
 
-  sku_name = "standard"
-
-  # Habilitar soft delete y purge protection para seguridad
+  # Habilitar soft delete y purge protection
   soft_delete_retention_days = 7
-  purge_protection_enabled   = var.purge_protection_enabled
+  purge_protection_enabled   = false
 
-  # Network ACLs - Permitir acceso desde Azure Services y desde IPs específicas
+  # Network ACLs - Permitir acceso desde Azure Services
   network_acls {
-    default_action = var.network_default_action
+    default_action = "Allow"
     bypass         = "AzureServices"
-  }
-
-  # Acceso del Service Principal que ejecuta Terraform
-  access_policy {
-    tenant_id = var.tenant_id
-    object_id = var.service_principal_object_id
-
-    secret_permissions = [
-      "Get",
-      "List",
-      "Set",
-      "Delete",
-      "Recover",
-      "Backup",
-      "Restore"
-    ]
-
-    key_permissions = [
-      "Get",
-      "List",
-      "Create",
-      "Delete",
-      "Recover",
-      "Backup",
-      "Restore"
-    ]
   }
 
   tags = merge(
@@ -48,8 +36,118 @@ resource "azurerm_key_vault" "main" {
     {
       Environment = "global"
       ManagedBy   = "Terraform"
-      Purpose     = "Global Secrets"
+      Purpose     = "KeyVault"
     }
   )
+}
+
+# Access Policy para el Service Principal (para que GitHub Actions pueda escribir)
+resource "azurerm_key_vault_access_policy" "service_principal" {
+  key_vault_id = azurerm_key_vault.global.id
+  tenant_id    = var.tenant_id
+  object_id    = var.service_principal_object_id
+
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Recover",
+    "Backup",
+    "Restore"
+  ]
+}
+
+# Access Policy para el System-Assigned Identity del cluster AKS (para que pueda leer)
+# Nota: Esto se actualizará después de crear los clusters
+resource "azurerm_key_vault_access_policy" "aks_identity" {
+  for_each = var.aks_cluster_identities
+
+  key_vault_id = azurerm_key_vault.global.id
+  tenant_id    = var.tenant_id
+  object_id    = each.value
+
+  secret_permissions = [
+    "Get",
+    "List"
+  ]
+}
+
+# Secrets del Key Vault - Resource Groups y Cluster Names
+resource "azurerm_key_vault_secret" "resource_group_dev" {
+  name         = "AZURE-RESOURCE-GROUP-DEV"
+  value        = var.azure_resource_group_dev
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "aks_cluster_name_dev" {
+  name         = "AKS-CLUSTER-NAME-DEV"
+  value        = var.aks_cluster_name_dev
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "resource_group_stage" {
+  name         = "AZURE-RESOURCE-GROUP-STAGE"
+  value        = var.azure_resource_group_stage
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "aks_cluster_name_stage" {
+  name         = "AKS-CLUSTER-NAME-STAGE"
+  value        = var.aks_cluster_name_stage
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "resource_group_prod" {
+  name         = "AZURE-RESOURCE-GROUP-PROD"
+  value        = var.azure_resource_group_prod
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "aks_cluster_name_prod" {
+  name         = "AKS-CLUSTER-NAME-PROD"
+  value        = var.aks_cluster_name_prod
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+# Secrets de Docker Hub
+resource "azurerm_key_vault_secret" "dockerhub_username" {
+  name         = "DOCKERHUB-USERNAME"
+  value        = var.dockerhub_username
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "dockerhub_token" {
+  name         = "DOCKERHUB-TOKEN"
+  value        = var.dockerhub_token
+  key_vault_id = azurerm_key_vault.global.id
+  sensitive    = true
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+# Secret de Azure Credential (opcional)
+resource "azurerm_key_vault_secret" "azure_credential" {
+  count        = var.azure_credential != "" ? 1 : 0
+  name         = "AZURE-CREDENTIAL"
+  value        = var.azure_credential
+  key_vault_id = azurerm_key_vault.global.id
+  sensitive    = true
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
 }
 

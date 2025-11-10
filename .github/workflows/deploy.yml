@@ -23,6 +23,122 @@ env:
   AZURE_CLI_VERSION: '2.0'
 
 jobs:
+  deploy-keyvault-global:
+    name: Deploy Key Vault Global
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: global
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
+            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
+            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
+            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" ]; then
+            echo "❌ Error: AZURE_RESOURCE_GROUP_DEV secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.AKS_CLUSTER_NAME_DEV }}" ]; then
+            echo "❌ Error: AKS_CLUSTER_NAME_DEV secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
+            echo "❌ Error: DOCKERHUB_USERNAME secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "❌ Error: DOCKERHUB_TOKEN secret is missing"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
+      - name: Setup Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az login --service-principal \
+            -u "$ARM_CLIENT_ID" \
+            -p "$ARM_CLIENT_SECRET" \
+            --tenant "$ARM_TENANT_ID" \
+            --output none
+
+      - name: Get Service Principal Object ID
+        id: sp_object_id
+        run: |
+          SP_OBJECT_ID=$(az ad sp show --id "$ARM_CLIENT_ID" --query id -o tsv)
+          echo "object_id=$SP_OBJECT_ID" >> $GITHUB_OUTPUT
+          echo "Service Principal Object ID: $SP_OBJECT_ID"
+
+      - name: Terraform Init
+        run: |
+          cd environments/global
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
+            -backend-config="key=global/terraform.tfstate" \
+            -reconfigure
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Plan
+        run: |
+          cd environments/global
+          terraform plan \
+            -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+            -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
+            -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
+            -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
+            -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
+            -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+            -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+            -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+            -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
+            -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+            -out=tfplan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Apply
+        run: |
+          cd environments/global
+          if [ -f tfplan ]; then
+            terraform apply -auto-approve tfplan
+          else
+            echo "ℹ️ No hay cambios que aplicar"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
@@ -101,228 +217,6 @@ jobs:
               repo: context.repo.repo,
               body: output
             })
-
-  create-keyvault:
-    name: Create Global Key Vault
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    environment:
-      name: global
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Validate Secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-
-      - name: Terraform Init
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=global/terraform.tfstate" \
-            -reconfigure
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az login --service-principal \
-            -u "$ARM_CLIENT_ID" \
-            -p "$ARM_CLIENT_SECRET" \
-            --tenant "$ARM_TENANT_ID" \
-            --output none
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Create temporary kubeconfig for provider
-        run: |
-          # Crear directorio .kube si no existe
-          mkdir -p ~/.kube
-          
-          # Crear un kubeconfig temporal vacío para que el provider de Kubernetes no falle
-          # cuando no hay cluster disponible (solo para limpiar recursos del estado)
-          echo "apiVersion: v1" > ~/.kube/config
-          echo "kind: Config" >> ~/.kube/config
-          echo "clusters: []" >> ~/.kube/config
-          echo "contexts: []" >> ~/.kube/config
-          echo "current-context: \"\"" >> ~/.kube/config
-          echo "users: []" >> ~/.kube/config
-          echo "✅ Kubeconfig temporal creado"
-        continue-on-error: true
-
-      - name: Check for Kubernetes resources in state
-        id: check-k8s-state
-        run: |
-          echo "🔍 Verificando recursos en el estado..."
-          terraform state list 2>/dev/null || echo "Estado vacío o no existe"
-          
-          if terraform state list 2>/dev/null | grep -q "kubernetes_config_map\|module.k8s_configmaps"; then
-            echo "⚠️ Detectados recursos de Kubernetes en el estado global"
-            echo "🔄 Estos recursos serán removidos del estado"
-            terraform state list | grep -E "kubernetes_config_map|module.k8s_configmaps" || true
-            echo "has_k8s_resources=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ No hay recursos de Kubernetes en el estado global"
-            echo "has_k8s_resources=false" >> $GITHUB_OUTPUT
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Remove Kubernetes resources from state
-        run: |
-          echo "🗑️ Removiendo recursos de Kubernetes del estado global..."
-          
-          # Listar todos los recursos de Kubernetes en el estado
-          K8S_RESOURCES=$(terraform state list 2>/dev/null | grep -E "kubernetes_config_map|module.k8s_configmaps" || true)
-          
-          if [ -n "$K8S_RESOURCES" ]; then
-            echo "Recursos encontrados:"
-            echo "$K8S_RESOURCES"
-            echo ""
-            echo "Removiendo recursos del estado (sin necesidad del provider)..."
-            
-            # Remover cada recurso del estado usando -lock=false para evitar problemas con el provider
-            echo "$K8S_RESOURCES" | while IFS= read -r resource; do
-              if [ -n "$resource" ]; then
-                echo "Removiendo: $resource"
-                terraform state rm -lock=false "$resource" 2>&1 || {
-                  echo "⚠️ No se pudo remover $resource con terraform state rm"
-                  echo "Intentando con terraform state rm -lock=false -lock-timeout=0s..."
-                  terraform state rm -lock=false -lock-timeout=0s "$resource" 2>&1 || echo "⚠️ Error al remover $resource"
-                }
-              fi
-            done
-            echo "✅ Recursos de Kubernetes removidos del estado"
-          else
-            echo "ℹ️ No se encontraron recursos de Kubernetes para remover"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Terraform Plan
-        id: plan
-        run: |
-          set +e
-          terraform plan -var-file=environments/global/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
-          PLAN_EXIT_CODE=${PIPESTATUS[0]}
-          
-          if [ "$PLAN_EXIT_CODE" = "1" ]; then
-            echo "❌ Error en el plan"
-            cat plan_output.txt
-            exit 1
-          elif [ "$PLAN_EXIT_CODE" = "2" ]; then
-            echo "✅ Plan exitoso - hay cambios que aplicar"
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Plan exitoso - no hay cambios"
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            rm -f tfplan
-          fi
-          set -e
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Terraform Apply
-        run: |
-          if [ -f tfplan ]; then
-            echo "🚀 Aplicando cambios de Terraform..."
-            terraform apply -auto-approve tfplan
-            APPLY_EXIT_CODE=$?
-            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
-              echo "✅ Cambios aplicados exitosamente"
-            else
-              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
-              exit $APPLY_EXIT_CODE
-            fi
-          else
-            echo "ℹ️ No hay cambios que aplicar - saltando apply"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Get Key Vault Name
-        id: keyvault
-        run: |
-          KEY_VAULT_NAME=$(terraform output -raw key_vault_name 2>/dev/null || echo "")
-          if [ -z "$KEY_VAULT_NAME" ]; then
-            # Si no hay output, construir el nombre usando la misma lógica que en keyvault.tf
-            RESOURCE_PREFIX="ecommerce"
-            KEY_VAULT_NAME="${RESOURCE_PREFIX}kv$(echo -n "${RESOURCE_PREFIX}global" | md5sum | cut -c1-8)"
-          fi
-          echo "key_vault_name=$KEY_VAULT_NAME" >> $GITHUB_OUTPUT
-          echo "✅ Key Vault Name: $KEY_VAULT_NAME"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Insert Secrets to Key Vault
-        run: |
-          KEY_VAULT_NAME="${{ steps.keyvault.outputs.key_vault_name }}"
-          echo "🔐 Insertando secretos en Key Vault: $KEY_VAULT_NAME"
-          
-          # Verificar que el Key Vault existe
-          if ! az keyvault show --name "$KEY_VAULT_NAME" --output none 2>/dev/null; then
-            echo "❌ Key Vault no encontrado: $KEY_VAULT_NAME"
-            exit 1
-          fi
-          
-          # Insertar secretos desde GitHub Secrets
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-RESOURCE-GROUP-DEV" --value "${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" || echo "⚠️ Error al insertar AZURE-RESOURCE-GROUP-DEV"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AKS-CLUSTER-NAME-DEV" --value "${{ secrets.AKS_CLUSTER_NAME_DEV }}" || echo "⚠️ Error al insertar AKS-CLUSTER-NAME-DEV"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-RESOURCE-GROUP-STAGE" --value "${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" || echo "⚠️ Error al insertar AZURE-RESOURCE-GROUP-STAGE"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AKS-CLUSTER-NAME-STAGE" --value "${{ secrets.AKS_CLUSTER_NAME_STAGE }}" || echo "⚠️ Error al insertar AKS-CLUSTER-NAME-STAGE"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-RESOURCE-GROUP-PROD" --value "${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" || echo "⚠️ Error al insertar AZURE-RESOURCE-GROUP-PROD"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AKS-CLUSTER-NAME-PROD" --value "${{ secrets.AKS_CLUSTER_NAME_PROD }}" || echo "⚠️ Error al insertar AKS-CLUSTER-NAME-PROD"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "DOCKERHUB-USERNAME" --value "${{ secrets.DOCKERHUB_USERNAME }}" || echo "⚠️ Error al insertar DOCKERHUB-USERNAME"
-          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "DOCKERHUB-TOKEN" --value "${{ secrets.DOCKERHUB_TOKEN }}" || echo "⚠️ Error al insertar DOCKERHUB-TOKEN"
-          
-          if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
-            az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-CREDENTIAL" --value "${{ secrets.AZURE_CREDENTIAL }}" || echo "⚠️ Error al insertar AZURE-CREDENTIAL"
-          fi
-          
-          echo "✅ Secretos insertados en Key Vault"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
   terraform-apply-dev:
     name: Deploy Dev
@@ -516,6 +410,35 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_DEV }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME_DEV }} \
+            --overwrite-existing
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Create Spring ConfigMap in Kubernetes
+        run: |
+          echo "📦 Creando ConfigMap con variables de entorno para Spring Boot..."
+          kubectl create configmap spring-env-config \
+            --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
+            --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
+            --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "✅ ConfigMap creado exitosamente"
+        continue-on-error: true
+
   terraform-apply-stage:
     name: Deploy Stage
     runs-on: ubuntu-latest
@@ -708,6 +631,35 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_STAGE }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME_STAGE }} \
+            --overwrite-existing
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Create Spring ConfigMap in Kubernetes
+        run: |
+          echo "📦 Creando ConfigMap con variables de entorno para Spring Boot..."
+          kubectl create configmap spring-env-config \
+            --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
+            --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
+            --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "✅ ConfigMap creado exitosamente"
+        continue-on-error: true
+
   terraform-apply-prod:
     name: Deploy Prod
     runs-on: ubuntu-latest
@@ -899,3 +851,32 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+
+      - name: Get AKS Credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP_PROD }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME_PROD }} \
+            --overwrite-existing
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Create Spring ConfigMap in Kubernetes
+        run: |
+          echo "📦 Creando ConfigMap con variables de entorno para Spring Boot..."
+          kubectl create configmap spring-env-config \
+            --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
+            --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
+            --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "✅ ConfigMap creado exitosamente"
+        continue-on-error: true

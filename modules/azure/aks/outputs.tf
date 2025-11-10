@@ -102,3 +102,8 @@ output "backup_vault_name" {
   description = "Nombre del Recovery Services Vault (si está habilitado)"
   value       = var.enable_backup ? azurerm_recovery_services_vault.main[0].name : null
 }
+
+output "cluster_identity_principal_id" {
+  description = "Principal ID de la identidad del cluster AKS"
+  value       = azurerm_kubernetes_cluster.main.identity[0].principal_id
+}
