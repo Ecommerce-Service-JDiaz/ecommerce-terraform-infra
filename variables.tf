@@ -113,3 +113,9 @@ variable "tags" {
   default     = {}
 }
 
+variable "create_aks" {
+  description = "Crear el cluster AKS (false para solo crear Key Vault global)"
+  type        = bool
+  default     = true
+}
+

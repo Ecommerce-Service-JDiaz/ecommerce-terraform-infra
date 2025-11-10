@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.23"
+    }
   }
 }
 
@@ -25,7 +29,9 @@ provider "azurerm" {
   }
 }
 
+# Módulo AKS - Solo se crea si create_aks es true (no para Key Vault global)
 module "aks" {
+  count  = var.create_aks ? 1 : 0
   source = "./modules/azure/aks"
 
   # Información básica
@@ -58,5 +64,22 @@ module "aks" {
 
   # Tags
   tags = var.tags
+}
+
+# Provider de Kubernetes - Usa las credenciales del cluster AKS
+# Se configura dinámicamente cuando el cluster AKS está disponible
+provider "kubernetes" {
+  host                   = var.create_aks ? try(module.aks[0].host, "") : ""
+  client_certificate     = var.create_aks ? try(base64decode(module.aks[0].client_certificate), "") : ""
+  client_key             = var.create_aks ? try(base64decode(module.aks[0].client_key), "") : ""
+  cluster_ca_certificate = var.create_aks ? try(base64decode(module.aks[0].cluster_ca_certificate), "") : ""
+}
+
+# ConfigMaps para variables de entorno de Spring Boot
+module "k8s_configmaps" {
+  count  = var.create_aks ? 1 : 0
+  source = "./modules/kubernetes/configmaps"
+
+  depends_on = [module.aks]
 }
 

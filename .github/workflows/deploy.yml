@@ -102,6 +102,140 @@ jobs:
               body: output
             })
 
+  create-keyvault:
+    name: Create Global Key Vault
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: global
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Validate Secrets
+        run: |
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
+            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+            exit 1
+          fi
+          echo "✅ All required secrets are configured"
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
+            -backend-config="key=global/terraform.tfstate" \
+            -reconfigure
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Setup Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az login --service-principal \
+            -u "$ARM_CLIENT_ID" \
+            -p "$ARM_CLIENT_SECRET" \
+            --tenant "$ARM_TENANT_ID" \
+            --output none
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Plan
+        run: |
+          terraform plan -var-file=environments/global/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
+          if [ "$PLAN_EXIT_CODE" = "1" ]; then
+            echo "❌ Error en el plan"
+            cat plan_output.txt
+            exit 1
+          elif [ "$PLAN_EXIT_CODE" = "2" ]; then
+            echo "✅ Plan exitoso - hay cambios que aplicar"
+          else
+            echo "✅ Plan exitoso - no hay cambios"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
+      - name: Terraform Apply
+        run: |
+          if [ -f tfplan ]; then
+            terraform apply -auto-approve tfplan
+          else
+            echo "ℹ️ No hay cambios que aplicar"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Get Key Vault Name
+        id: keyvault
+        run: |
+          KEY_VAULT_NAME=$(terraform output -raw key_vault_name 2>/dev/null || echo "")
+          if [ -z "$KEY_VAULT_NAME" ]; then
+            # Si no hay output, construir el nombre usando la misma lógica que en keyvault.tf
+            RESOURCE_PREFIX="ecommerce"
+            KEY_VAULT_NAME="${RESOURCE_PREFIX}kv$(echo -n "${RESOURCE_PREFIX}global" | md5sum | cut -c1-8)"
+          fi
+          echo "key_vault_name=$KEY_VAULT_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Key Vault Name: $KEY_VAULT_NAME"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Insert Secrets to Key Vault
+        run: |
+          KEY_VAULT_NAME="${{ steps.keyvault.outputs.key_vault_name }}"
+          echo "🔐 Insertando secretos en Key Vault: $KEY_VAULT_NAME"
+          
+          # Verificar que el Key Vault existe
+          if ! az keyvault show --name "$KEY_VAULT_NAME" --output none 2>/dev/null; then
+            echo "❌ Key Vault no encontrado: $KEY_VAULT_NAME"
+            exit 1
+          fi
+          
+          # Insertar secretos desde GitHub Secrets
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-RESOURCE-GROUP-DEV" --value "${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" || echo "⚠️ Error al insertar AZURE-RESOURCE-GROUP-DEV"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AKS-CLUSTER-NAME-DEV" --value "${{ secrets.AKS_CLUSTER_NAME_DEV }}" || echo "⚠️ Error al insertar AKS-CLUSTER-NAME-DEV"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-RESOURCE-GROUP-STAGE" --value "${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" || echo "⚠️ Error al insertar AZURE-RESOURCE-GROUP-STAGE"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AKS-CLUSTER-NAME-STAGE" --value "${{ secrets.AKS_CLUSTER_NAME_STAGE }}" || echo "⚠️ Error al insertar AKS-CLUSTER-NAME-STAGE"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-RESOURCE-GROUP-PROD" --value "${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" || echo "⚠️ Error al insertar AZURE-RESOURCE-GROUP-PROD"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AKS-CLUSTER-NAME-PROD" --value "${{ secrets.AKS_CLUSTER_NAME_PROD }}" || echo "⚠️ Error al insertar AKS-CLUSTER-NAME-PROD"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "DOCKERHUB-USERNAME" --value "${{ secrets.DOCKERHUB_USERNAME }}" || echo "⚠️ Error al insertar DOCKERHUB-USERNAME"
+          az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "DOCKERHUB-TOKEN" --value "${{ secrets.DOCKERHUB_TOKEN }}" || echo "⚠️ Error al insertar DOCKERHUB-TOKEN"
+          
+          if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
+            az keyvault secret set --vault-name "$KEY_VAULT_NAME" --name "AZURE-CREDENTIAL" --value "${{ secrets.AZURE_CREDENTIAL }}" || echo "⚠️ Error al insertar AZURE-CREDENTIAL"
+          fi
+          
+          echo "✅ Secretos insertados en Key Vault"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
   terraform-apply-dev:
     name: Deploy Dev
     runs-on: ubuntu-latest

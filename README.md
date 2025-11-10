@@ -119,17 +119,29 @@ Guarda el output del comando anterior, necesitarás:
 
 ### 3. Configurar GitHub Secrets
 
-Ve a **Settings → Secrets and variables → Actions** en tu repositorio y agrega:
+Ve a **Settings → Secrets and variables → Actions** en tu repositorio y agrega los siguientes secrets:
 
-- `AZURE_CLIENT_ID`
-- `AZURE_CLIENT_SECRET`
-- `AZURE_SUBSCRIPTION_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_STATE_RESOURCE_GROUP`
-- `AZURE_STATE_STORAGE_ACCOUNT`
-- `AZURE_STATE_CONTAINER`
+#### Secrets Requeridos para Azure Provider
+- `AZURE_CLIENT_ID`: Service Principal Client ID
+- `AZURE_CLIENT_SECRET`: Service Principal Client Secret
+- `AZURE_SUBSCRIPTION_ID`: Azure Subscription ID
+- `AZURE_TENANT_ID`: Azure Tenant ID
 
-**Ver documentación completa:** [GITHUB_SECRETS.md](GITHUB_SECRETS.md)
+#### Secrets Requeridos para Remote State
+- `AZURE_STATE_RESOURCE_GROUP`: Resource Group del Storage Account para Terraform state
+- `AZURE_STATE_STORAGE_ACCOUNT`: Nombre del Storage Account para Terraform state
+- `AZURE_STATE_CONTAINER`: Nombre del contenedor (default: `tfstate`)
+
+#### Secrets Requeridos para Key Vault
+- `AZURE_RESOURCE_GROUP_DEV`: Nombre del Resource Group de Dev (ej: `ecommerce-rg-dev`)
+- `AKS_CLUSTER_NAME_DEV`: Nombre del cluster AKS de Dev (ej: `aks-cluster-dev`)
+- `AZURE_RESOURCE_GROUP_STAGE`: Nombre del Resource Group de Stage (ej: `ecommerce-rg-stage`)
+- `AKS_CLUSTER_NAME_STAGE`: Nombre del cluster AKS de Stage (ej: `aks-cluster-stage`)
+- `AZURE_RESOURCE_GROUP_PROD`: Nombre del Resource Group de Prod (ej: `ecommerce-rg-prod`)
+- `AKS_CLUSTER_NAME_PROD`: Nombre del cluster AKS de Prod (ej: `aks-cluster-prod`)
+- `DOCKERHUB_USERNAME`: Usuario de Docker Hub
+- `DOCKERHUB_TOKEN`: Token de Docker Hub
+- `AZURE_CREDENTIAL`: Credenciales de Azure (opcional)
 
 ### 4. Configurar GitHub Environments (Opcional pero Recomendado)
 
@@ -208,6 +220,10 @@ Por cada entorno se crean los siguientes recursos:
 - Log Analytics Workspace (solo Prod)
 - Recovery Services Vault y Storage Account (Stage y Prod)
 - Backup Policy (Stage y Prod)
+- **ConfigMap de Kubernetes** (`spring-env-config`) con variables de entorno para Spring Boot:
+  - `SPRING_ZIPKIN_BASE_URL=http://zipkin:9411`
+  - `SPRING_CONFIG_IMPORT=http://cloud-config-service:9296`
+  - `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-discovery:8761/eureka`
 
 ## Destruir la Infraestructura
 
@@ -220,6 +236,21 @@ Los despliegues solo se destruyen mediante GitHub Actions:
 5. Click en **Run workflow**
 
 **⚠️ ADVERTENCIA**: Esto eliminará todos los recursos del entorno especificado.
+
+## Key Vault Global
+
+El proyecto incluye un **Azure Key Vault global** que se crea automáticamente y almacena secretos compartidos entre todos los ambientes:
+
+- **Resource Group**: `ecommerce-rg-global`
+- **Key Vault**: Se crea con un nombre único basado en el prefijo del proyecto
+- **Secretos almacenados**:
+  - `AZURE-RESOURCE-GROUP-DEV`, `AKS-CLUSTER-NAME-DEV`
+  - `AZURE-RESOURCE-GROUP-STAGE`, `AKS-CLUSTER-NAME-STAGE`
+  - `AZURE-RESOURCE-GROUP-PROD`, `AKS-CLUSTER-NAME-PROD`
+  - `DOCKERHUB-USERNAME`, `DOCKERHUB-TOKEN`
+  - `AZURE-CREDENTIAL` (opcional)
+
+Los secretos se insertan automáticamente desde GitHub Secrets durante el despliegue.
 
 ## Variables de Entorno y Seguridad
 
