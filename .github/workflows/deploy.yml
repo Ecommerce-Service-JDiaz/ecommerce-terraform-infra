@@ -1,6 +1,13 @@
 name: Deploy Infrastructure
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '.github/workflows/deploy.yml'
   pull_request:
     branches:
       - main

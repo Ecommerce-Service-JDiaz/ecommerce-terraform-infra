@@ -7,10 +7,10 @@ dns_prefix      = "ecommerce-dev"
 
 # Configuración del node pool - Dev
 node_pool_name    = "system"
-node_vm_size      = "Standard_B2s"
-node_disk_size_gb = 64
-node_min_count    = 1
-node_max_count    = 1
+node_vm_size      = "Standard_F8s_v2"  # 8 vCPUs, 16 GB RAM - Optimizada para compute
+node_disk_size_gb = 128
+node_min_count    = 3
+node_max_count    = 6
 
 # Auto-scaling
 enable_auto_scaling = true

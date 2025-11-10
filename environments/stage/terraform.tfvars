@@ -7,10 +7,10 @@ dns_prefix      = "ecommerce-stage"
 
 # Configuración del node pool - Stage
 node_pool_name    = "system"
-node_vm_size      = "Standard_D2s_v3"
-node_disk_size_gb = 64
-node_min_count    = 1
-node_max_count    = 1
+node_vm_size      = "Standard_F16s_v2"  # 16 vCPUs, 32 GB RAM - Alta performance
+node_disk_size_gb = 256
+node_min_count    = 3
+node_max_count    = 6
 
 # Auto-scaling
 enable_auto_scaling = true

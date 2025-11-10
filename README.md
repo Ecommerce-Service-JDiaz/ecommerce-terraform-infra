@@ -33,27 +33,27 @@ ecommerce-terraform-infra/
 ## Características por Entorno
 
 ### Dev
-- **Nodos**: 2-4 (min: 2, max: 4)
-- **VM Size**: Standard_B2s
-- **Disk Size**: 64GB
+- **Nodos**: 3-6 (min: 3, max: 6)
+- **VM Size**: Standard_F8s_v2 (8 vCPUs, 16 GB RAM - Optimizada para compute)
+- **Disk Size**: 128GB
 - **Auto-scaling**: Habilitado
 - **Monitoring**: Azure Monitor básico (integrado)
 - **Backup**: No
 - **SLA**: N/A
 
 ### Stage
-- **Nodos**: 2-4 (min: 2, max: 4)
-- **VM Size**: Standard_B2s
-- **Disk Size**: 64GB
+- **Nodos**: 3-6 (min: 3, max: 6)
+- **VM Size**: Standard_F16s_v2 (16 vCPUs, 32 GB RAM - Alta performance)
+- **Disk Size**: 256GB
 - **Auto-scaling**: Habilitado
 - **Monitoring**: Azure Monitor básico (integrado)
 - **Backup**: Semanal
 - **SLA**: 95%
 
 ### Prod
-- **Nodos**: 2-5 (min: 2, max: 5)
-- **VM Size**: Standard_DS2_v2
-- **Disk Size**: 128GB
+- **Nodos**: 3-6 (min: 3, max: 6)
+- **VM Size**: Standard_F16s_v2 (16 vCPUs, 32 GB RAM - Máxima performance)
+- **Disk Size**: 256GB
 - **Auto-scaling**: Habilitado
 - **Monitoring**: Azure Monitor mejorado (Log Analytics Workspace)
 - **Backup**: Diario
