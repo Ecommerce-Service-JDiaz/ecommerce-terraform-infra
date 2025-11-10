@@ -327,12 +327,27 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
+          # Limpiar cualquier plan file anterior
+          rm -f tfplan plan_output.txt
+          
           set +e
           terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
           PLAN_EXIT_CODE=${PIPESTATUS[0]}
           set -e
           
+          # Si el plan falló con error (exit code 1), verificar si es por recursos existentes
           if [ "$PLAN_EXIT_CODE" = "1" ]; then
+            # Verificar si el plan file se creó (no debería si hubo un error real)
+            if [ -f tfplan ]; then
+              # Si el plan file existe pero el exit code es 1, el plan está corrupto
+              echo "❌ Error: Plan file creado pero con código de error 1 (plan incompleto)"
+              echo "📋 Mostrando salida completa del plan:"
+              cat plan_output.txt
+              rm -f tfplan
+              exit 1
+            fi
+            
+            # Si no hay plan file, verificar si es por recursos existentes
             if grep -q "already exists" plan_output.txt; then
               echo "⚠️ Detectados recursos existentes que no están en el estado"
               echo "🔄 Intentando importar recursos existentes..."
@@ -346,15 +361,28 @@ jobs:
               fi
               
               echo "🔄 Re-ejecutando plan después de importar..."
+              rm -f tfplan plan_output.txt
               set +e
               terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
               PLAN_EXIT_CODE=${PIPESTATUS[0]}
               set -e
-              if [ "$PLAN_EXIT_CODE" = "1" ] && grep -q "already exists" plan_output.txt; then
-                echo "ℹ️ Algunos recursos aún existen pero no se pueden importar automáticamente"
-                echo "✅ Continuando sin cambios (los recursos ya están desplegados)"
-                rm -f tfplan
-                PLAN_EXIT_CODE=0
+              
+              if [ "$PLAN_EXIT_CODE" = "1" ]; then
+                # Si aún falla, verificar si hay plan file
+                if [ -f tfplan ]; then
+                  echo "❌ Error: Plan file creado pero con código de error 1 (plan incompleto)"
+                  cat plan_output.txt
+                  rm -f tfplan
+                  exit 1
+                elif grep -q "already exists" plan_output.txt; then
+                  echo "ℹ️ Algunos recursos aún existen pero no se pueden importar automáticamente"
+                  echo "✅ Continuando sin cambios (los recursos ya están desplegados)"
+                  PLAN_EXIT_CODE=0
+                else
+                  echo "❌ Error en el plan después de importar"
+                  cat plan_output.txt
+                  exit 1
+                fi
               fi
             else
               echo "❌ Error en el plan que no es por recursos existentes"
@@ -365,12 +393,17 @@ jobs:
           elif [ "$PLAN_EXIT_CODE" = "2" ]; then
             echo "✅ Plan exitoso - hay cambios que aplicar"
             # Verificar que el plan file es válido
+            if [ ! -f tfplan ]; then
+              echo "❌ Error: Plan exitoso pero no se creó el plan file"
+              exit 1
+            fi
             if terraform show -json tfplan > /dev/null 2>&1; then
               echo "✅ Plan file válido"
             else
               echo "❌ Error: El plan file está corrupto o incompleto"
               echo "📋 Mostrando salida del plan:"
               cat plan_output.txt
+              rm -f tfplan
               exit 1
             fi
           elif [ "$PLAN_EXIT_CODE" = "0" ]; then
@@ -380,6 +413,7 @@ jobs:
             echo "⚠️ Código de salida inesperado: $PLAN_EXIT_CODE"
             echo "📋 Mostrando salida del plan:"
             cat plan_output.txt
+            rm -f tfplan
             exit 1
           fi
         env:

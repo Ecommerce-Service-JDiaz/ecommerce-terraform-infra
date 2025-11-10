@@ -135,7 +135,6 @@ resource "azurerm_key_vault_secret" "dockerhub_token" {
   name         = "DOCKERHUB-TOKEN"
   value        = var.dockerhub_token
   key_vault_id = azurerm_key_vault.global.id
-  sensitive    = true
 
   depends_on = [azurerm_key_vault_access_policy.service_principal]
 }
@@ -146,7 +145,6 @@ resource "azurerm_key_vault_secret" "azure_credential" {
   name         = "AZURE-CREDENTIAL"
   value        = var.azure_credential
   key_vault_id = azurerm_key_vault.global.id
-  sensitive    = true
 
   depends_on = [azurerm_key_vault_access_policy.service_principal]
 }
