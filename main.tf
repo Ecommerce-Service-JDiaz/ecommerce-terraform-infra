@@ -99,7 +99,7 @@ provider "kubernetes" {
     var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0 ? base64decode(data.azurerm_kubernetes_cluster.existing[0].kube_config[0].cluster_ca_certificate) : null
   )
   
-  # Si no hay cluster disponible, usar kubeconfig del sistema (para limpiar recursos del estado si es necesario)
+  # Si no hay cluster disponible, usar kubeconfig del sistema (que creamos en el pipeline)
   # Esto permite que el provider esté disponible incluso cuando no hay cluster, para manejar recursos existentes en el estado
   config_path = (var.create_aks && length(module.aks) > 0) || (var.environment != "global" && length(data.azurerm_kubernetes_cluster.existing) > 0) ? null : "~/.kube/config"
 }

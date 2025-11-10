@@ -155,12 +155,32 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Create temporary kubeconfig for provider
+        run: |
+          # Crear directorio .kube si no existe
+          mkdir -p ~/.kube
+          
+          # Crear un kubeconfig temporal vacío para que el provider de Kubernetes no falle
+          # cuando no hay cluster disponible (solo para limpiar recursos del estado)
+          echo "apiVersion: v1" > ~/.kube/config
+          echo "kind: Config" >> ~/.kube/config
+          echo "clusters: []" >> ~/.kube/config
+          echo "contexts: []" >> ~/.kube/config
+          echo "current-context: \"\"" >> ~/.kube/config
+          echo "users: []" >> ~/.kube/config
+          echo "✅ Kubeconfig temporal creado"
+        continue-on-error: true
+
       - name: Check for Kubernetes resources in state
         id: check-k8s-state
         run: |
-          if terraform state list 2>/dev/null | grep -q "module.k8s_configmaps"; then
+          echo "🔍 Verificando recursos en el estado..."
+          terraform state list 2>/dev/null || echo "Estado vacío o no existe"
+          
+          if terraform state list 2>/dev/null | grep -q "kubernetes_config_map\|module.k8s_configmaps"; then
             echo "⚠️ Detectados recursos de Kubernetes en el estado global"
-            echo "🔄 Estos recursos serán removidos del estado si no hay cluster disponible"
+            echo "🔄 Estos recursos serán removidos del estado"
+            terraform state list | grep -E "kubernetes_config_map|module.k8s_configmaps" || true
             echo "has_k8s_resources=true" >> $GITHUB_OUTPUT
           else
             echo "✅ No hay recursos de Kubernetes en el estado global"
@@ -173,15 +193,33 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         continue-on-error: true
 
-      - name: Remove Kubernetes resources from state if needed
+      - name: Remove Kubernetes resources from state
         run: |
-          if [ "${{ steps.check-k8s-state.outputs.has_k8s_resources }}" = "true" ]; then
-            echo "🗑️ Removiendo recursos de Kubernetes del estado global..."
-            terraform state list | grep "module.k8s_configmaps" | while read resource; do
-              echo "Removiendo: $resource"
-              terraform state rm "$resource" || echo "No se pudo remover $resource (puede que ya no exista)"
+          echo "🗑️ Removiendo recursos de Kubernetes del estado global..."
+          
+          # Listar todos los recursos de Kubernetes en el estado
+          K8S_RESOURCES=$(terraform state list 2>/dev/null | grep -E "kubernetes_config_map|module.k8s_configmaps" || true)
+          
+          if [ -n "$K8S_RESOURCES" ]; then
+            echo "Recursos encontrados:"
+            echo "$K8S_RESOURCES"
+            echo ""
+            echo "Removiendo recursos del estado (sin necesidad del provider)..."
+            
+            # Remover cada recurso del estado usando -lock=false para evitar problemas con el provider
+            echo "$K8S_RESOURCES" | while IFS= read -r resource; do
+              if [ -n "$resource" ]; then
+                echo "Removiendo: $resource"
+                terraform state rm -lock=false "$resource" 2>&1 || {
+                  echo "⚠️ No se pudo remover $resource con terraform state rm"
+                  echo "Intentando con terraform state rm -lock=false -lock-timeout=0s..."
+                  terraform state rm -lock=false -lock-timeout=0s "$resource" 2>&1 || echo "⚠️ Error al remover $resource"
+                }
+              fi
             done
             echo "✅ Recursos de Kubernetes removidos del estado"
+          else
+            echo "ℹ️ No se encontraron recursos de Kubernetes para remover"
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
