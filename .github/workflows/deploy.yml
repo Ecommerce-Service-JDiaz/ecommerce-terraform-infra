@@ -456,7 +456,17 @@ jobs:
               exit $APPLY_EXIT_CODE
             fi
           else
-            echo "ℹ️ No hay cambios que aplicar - saltando apply"
+            echo "ℹ️ No hay cambios que aplicar - verificando si los recursos ya existen..."
+            # Verificar si los recursos ya existen en el estado
+            if terraform state list 2>/dev/null | grep -q "module.aks"; then
+              echo "✅ Recursos encontrados en el estado - la infraestructura ya está desplegada"
+            else
+              echo "⚠️ No hay plan file y no hay recursos en el estado"
+              echo "📋 Estado actual:"
+              terraform state list 2>/dev/null || echo "Estado vacío o no existe"
+              echo "❌ Error: No se puede continuar sin recursos desplegados"
+              exit 1
+            fi
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -494,10 +504,40 @@ jobs:
         run: |
           RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
           CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
+          
+          if [ "$RESOURCE_GROUP" = "null" ] || [ -z "$RESOURCE_GROUP" ]; then
+            echo "❌ Error: No se pudo obtener el Resource Group del output de Terraform"
+            echo "📋 Output completo:"
+            cat terraform_output.json
+            exit 1
+          fi
+          
+          if [ "$CLUSTER_NAME" = "null" ] || [ -z "$CLUSTER_NAME" ]; then
+            echo "❌ Error: No se pudo obtener el Cluster Name del output de Terraform"
+            echo "📋 Output completo:"
+            cat terraform_output.json
+            exit 1
+          fi
+          
           echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
           echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
           echo "Resource Group: $RESOURCE_GROUP"
           echo "Cluster Name: $CLUSTER_NAME"
+          
+          # Verificar que el Resource Group existe en Azure
+          echo "🔍 Verificando que el Resource Group existe en Azure..."
+          if az group show --name "$RESOURCE_GROUP" --query id -o tsv 2>/dev/null | grep -q .; then
+            echo "✅ Resource Group encontrado en Azure"
+          else
+            echo "❌ Error: Resource Group '$RESOURCE_GROUP' no existe en Azure"
+            echo "⚠️ Los recursos no se desplegaron correctamente"
+            exit 1
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Install kubectl
         run: |
