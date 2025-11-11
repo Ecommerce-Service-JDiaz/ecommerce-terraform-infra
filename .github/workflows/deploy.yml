@@ -324,6 +324,42 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Clean State (Remove Orphaned Resources)
+        run: |
+          echo "🧹 Limpiando recursos huérfanos del estado de Terraform..."
+          
+          # Eliminar módulo de Kubernetes ConfigMap si existe (se crea con kubectl, no con Terraform)
+          if terraform state list 2>/dev/null | grep -q "module.k8s_configmaps"; then
+            echo "⚠️ Encontrado módulo k8s_configmaps en el estado - eliminando..."
+            terraform state list | grep "module.k8s_configmaps" | while read resource; do
+              echo "Eliminando: $resource"
+              terraform state rm "$resource" 2>&1 || echo "No se pudo eliminar $resource (puede que ya no exista)"
+            done
+          fi
+          
+          # Eliminar Resource Group del Key Vault si existe (está en environments/global, no aquí)
+          if terraform state list 2>/dev/null | grep -q "azurerm_resource_group.keyvault"; then
+            echo "⚠️ Encontrado azurerm_resource_group.keyvault en el estado - eliminando..."
+            terraform state rm azurerm_resource_group.keyvault 2>&1 || echo "No se pudo eliminar (puede que ya no exista)"
+          fi
+          
+          # Eliminar módulo keyvault si existe (está en environments/global, no aquí)
+          if terraform state list 2>/dev/null | grep -q "module.keyvault"; then
+            echo "⚠️ Encontrado módulo keyvault en el estado - eliminando..."
+            terraform state list | grep "module.keyvault" | while read resource; do
+              echo "Eliminando: $resource"
+              terraform state rm "$resource" 2>&1 || echo "No se pudo eliminar $resource (puede que ya no exista)"
+            done
+          fi
+          
+          echo "✅ Limpieza del estado completada"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Plan
         id: plan
         run: |
