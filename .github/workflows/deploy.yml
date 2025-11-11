@@ -600,6 +600,8 @@ jobs:
             --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
             --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
             --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
+            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_URI="https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server" \
+            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL="main" \
             --dry-run=client -o yaml | kubectl apply -f -
           echo "✅ ConfigMap creado exitosamente"
         continue-on-error: true
@@ -833,6 +835,8 @@ jobs:
             --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
             --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
             --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
+            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_URI="https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server" \
+            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL="main" \
             --dry-run=client -o yaml | kubectl apply -f -
           echo "✅ ConfigMap creado exitosamente"
         continue-on-error: true
@@ -1066,6 +1070,8 @@ jobs:
             --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
             --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
             --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
+            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_URI="https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server" \
+            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL="main" \
             --dry-run=client -o yaml | kubectl apply -f -
           echo "✅ ConfigMap creado exitosamente"
         continue-on-error: true
