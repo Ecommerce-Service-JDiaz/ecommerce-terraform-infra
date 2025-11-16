@@ -128,6 +128,9 @@ jobs:
       - name: Check Environment Filter
         id: env_check
         run: |
+          # Inicializar should_skip como false por defecto
+          SHOULD_SKIP="false"
+          
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             SELECTED_ENV="${{ github.event.inputs.environment }}"
             CURRENT_ENV="${{ matrix.environment }}"
@@ -137,12 +140,19 @@ jobs:
             
             if [ "$SELECTED_ENV" != "all" ] && [ "$SELECTED_ENV" != "$CURRENT_ENV" ]; then
               echo "⏭️ Saltando ambiente $CURRENT_ENV (solo se despliega $SELECTED_ENV)"
-              echo "should_skip=true" >> $GITHUB_OUTPUT
-              exit 0
+              SHOULD_SKIP="true"
             fi
           fi
-          echo "✅ Desplegando ambiente ${{ matrix.environment }}"
-          echo "should_skip=false" >> $GITHUB_OUTPUT
+          
+          if [ "$SHOULD_SKIP" = "true" ]; then
+            echo "should_skip=true" >> $GITHUB_OUTPUT
+            echo "::warning::Job saltado - solo se despliega $SELECTED_ENV"
+          else
+            echo "✅ Desplegando ambiente ${{ matrix.environment }}"
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "🔍 Debug: should_skip=$SHOULD_SKIP"
         continue-on-error: true
 
       - name: Checkout code
@@ -211,6 +221,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Check State
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           if terraform state list 2>/dev/null | grep -q .; then
             echo "✅ Estado encontrado con recursos existentes"
@@ -226,6 +237,7 @@ jobs:
         continue-on-error: true
 
       - name: Setup Azure CLI
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
           az login --service-principal \
@@ -240,6 +252,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Clean State (Remove Orphaned Resources)
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           echo "🧹 Limpiando recursos huérfanos del estado de Terraform..."
           
@@ -268,9 +281,10 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Plan
-        if: steps.env_check.outputs.should_skip != 'true'
+        if: steps.env_check.outputs.should_skip != 'true' && always()
         id: plan
         run: |
+          echo "🔍 Debug: should_skip=${{ steps.env_check.outputs.should_skip }}"
           echo "📋 Iniciando Terraform Plan para ${{ matrix.environment }}..."
           rm -f tfplan plan_output.txt
           
@@ -397,6 +411,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Verify State Saved to Backend
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           echo "🔍 Verificando que el estado se guardó en Azure Storage..."
           STATE_KEY="${{ matrix.environment }}/terraform.tfstate"
@@ -440,6 +455,7 @@ jobs:
         continue-on-error: true
 
       - name: Terraform Output
+        if: steps.env_check.outputs.should_skip != 'true'
         id: terraform_output
         run: |
           terraform output -json > terraform_output.json
@@ -451,6 +467,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Parse Terraform Outputs
+        if: steps.env_check.outputs.should_skip != 'true'
         id: parse_outputs
         run: |
           RESOURCE_GROUP=$(jq -r '.resource_group_name.value // empty' terraform_output.json)
@@ -486,12 +503,14 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Install kubectl
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
 
       - name: Get AKS Credentials
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           az aks get-credentials \
             --resource-group "${{ steps.parse_outputs.outputs.resource_group }}" \
@@ -504,6 +523,7 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Create Spring ConfigMap in Kubernetes
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           echo "📦 Creando ConfigMap con variables de entorno para Spring Boot..."
           kubectl create configmap spring-env-config \
@@ -517,6 +537,7 @@ jobs:
         continue-on-error: true
 
       - name: Deployment Summary
+        if: steps.env_check.outputs.should_skip != 'true'
         run: |
           echo "## ✅ Infraestructura ${{ matrix.environment }} Desplegada" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
