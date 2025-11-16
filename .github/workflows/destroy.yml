@@ -28,6 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        environment: ${{ github.event.inputs.environment == 'all' && fromJSON('["dev", "stage", "prod"]') || fromJSON(format('["{0}"]', github.event.inputs.environment)) }}
         include:
           - environment: dev
             resource_group_secret: AZURE_RESOURCE_GROUP_DEV
@@ -38,7 +39,9 @@ jobs:
     if: |
       github.event.inputs.environment != 'keyvault' &&
       (github.event.inputs.environment == 'all' ||
-       github.event.inputs.environment == '${{ matrix.environment }}')
+       github.event.inputs.environment == 'dev' ||
+       github.event.inputs.environment == 'stage' ||
+       github.event.inputs.environment == 'prod')
     environment:
       name: ${{ matrix.environment }}-destroy
     
