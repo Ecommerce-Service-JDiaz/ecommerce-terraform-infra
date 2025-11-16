@@ -90,43 +90,52 @@ jobs:
       - name: Get AZURE_CREDENTIAL Service Principal Object ID
         id: azure_credential_object_id
         run: |
-          if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
-            echo "🔍 Extrayendo clientId de AZURE_CREDENTIAL..."
-            CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
-            
-            # Intentar extraer clientId (con diferentes variantes)
-            CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
-            
-            if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "null" ] || [ "$CLIENT_ID" = "" ]; then
-              echo "⚠️ No se pudo extraer clientId del JSON de AZURE_CREDENTIAL"
-              echo "📋 JSON recibido (primeros 100 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 100)"
-              echo "object_id=" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            
-            echo "✅ Client ID encontrado: $CLIENT_ID"
-            echo "🔍 Obteniendo Object ID del Service Principal..."
-            CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
-            
-            if [ -n "$CREDENTIAL_OBJECT_ID" ] && [ "$CREDENTIAL_OBJECT_ID" != "" ]; then
-              echo "✅ Object ID encontrado: $CREDENTIAL_OBJECT_ID"
-              echo "object_id=$CREDENTIAL_OBJECT_ID" >> $GITHUB_OUTPUT
-            else
-              echo "⚠️ No se pudo obtener el Object ID del Service Principal con clientId: $CLIENT_ID"
-              echo "💡 Verificando si el Service Principal existe..."
-              az ad sp show --id "$CLIENT_ID" --query "{id:id,appId:appId,displayName:displayName}" -o json 2>&1 || echo "❌ Service Principal no encontrado"
-              echo "object_id=" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "ℹ️ AZURE_CREDENTIAL no está configurado"
-            echo "object_id=" >> $GITHUB_OUTPUT
+          if [ -z "${{ secrets.AZURE_CREDENTIAL }}" ]; then
+            echo "❌ ERROR: AZURE_CREDENTIAL no está configurado en los secrets"
+            echo "💡 Por favor, configura el secret AZURE_CREDENTIAL con el JSON de credenciales"
+            exit 1
           fi
+          
+          echo "🔍 Extrayendo clientId de AZURE_CREDENTIAL..."
+          CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
+          
+          # Intentar extraer clientId (con diferentes variantes)
+          CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
+          
+          if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "null" ] || [ "$CLIENT_ID" = "" ]; then
+            echo "❌ ERROR: No se pudo extraer clientId del JSON de AZURE_CREDENTIAL"
+            echo "📋 JSON recibido (primeros 200 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 200)"
+            echo "💡 Asegúrate de que el JSON contenga 'clientId' o 'client_id'"
+            exit 1
+          fi
+          
+          echo "✅ Client ID encontrado: $CLIENT_ID"
+          echo "🔍 Obteniendo Object ID del Service Principal..."
+          CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+          
+          if [ -z "$CREDENTIAL_OBJECT_ID" ] || [ "$CREDENTIAL_OBJECT_ID" = "" ]; then
+            echo "❌ ERROR: No se pudo obtener el Object ID del Service Principal con clientId: $CLIENT_ID"
+            echo "💡 Verificando si el Service Principal existe..."
+            SP_INFO=$(az ad sp show --id "$CLIENT_ID" --query "{id:id,appId:appId,displayName:displayName}" -o json 2>&1 || echo "")
+            if [ -n "$SP_INFO" ]; then
+              echo "📋 Información del Service Principal: $SP_INFO"
+            else
+              echo "❌ Service Principal no encontrado o no tienes permisos para consultarlo"
+            fi
+            echo "💡 Verifica que:"
+            echo "   1. El clientId sea correcto: $CLIENT_ID"
+            echo "   2. El Service Principal exista en Azure AD"
+            echo "   3. Tengas permisos para consultar Service Principals"
+            exit 1
+          fi
+          
+          echo "✅ Object ID encontrado: $CREDENTIAL_OBJECT_ID"
+          echo "object_id=$CREDENTIAL_OBJECT_ID" >> $GITHUB_OUTPUT
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
 
       - name: Ensure Storage Container Exists
         run: |
@@ -319,10 +328,11 @@ jobs:
         run: |
           cd environments/global
           
-          # Solo proceder si AZURE_CREDENTIAL está configurado y tiene Object ID
+          # Verificar que se obtuvo el Object ID
           if [ -z "${{ steps.azure_credential_object_id.outputs.object_id }}" ]; then
-            echo "ℹ️ AZURE_CREDENTIAL no está configurado o no se pudo obtener el Object ID"
-            exit 0
+            echo "❌ ERROR: No se pudo obtener el Object ID de AZURE_CREDENTIAL"
+            echo "💡 El paso anterior debe haber fallado. Revisa los logs."
+            exit 1
           fi
           
           echo "🔍 Verificando si la política de acceso de AZURE_CREDENTIAL ya existe..."
@@ -382,7 +392,6 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
 
       - name: Terraform Plan
         run: |
@@ -472,6 +481,29 @@ jobs:
             rm -f apply_output.txt
           else
             echo "ℹ️ No hay cambios que aplicar"
+          fi
+          
+          # Verificar que la access policy de AZURE_CREDENTIAL se creó correctamente
+          if [ -n "${{ steps.azure_credential_object_id.outputs.object_id }}" ]; then
+            echo "🔍 Verificando que la access policy de AZURE_CREDENTIAL se creó correctamente..."
+            AZURE_CREDENTIAL_OBJECT_ID="${{ steps.azure_credential_object_id.outputs.object_id }}"
+            
+            # Calcular el nombre del Key Vault
+            RESOURCE_PREFIX_CLEAN=$(echo "${{ secrets.RESOURCE_PREFIX }}" | tr -d '-')
+            HASH=$(echo -n "${{ secrets.RESOURCE_PREFIX }}global" | md5sum | cut -c1-4)
+            KEY_VAULT_NAME="${RESOURCE_PREFIX_CLEAN}kv${HASH}"
+            
+            # Verificar si la access policy existe en Azure
+            POLICY_EXISTS=$(az keyvault show --name "$KEY_VAULT_NAME" --resource-group "${{ secrets.RESOURCE_PREFIX }}-rg-global" --query "properties.accessPolicies[?objectId=='${AZURE_CREDENTIAL_OBJECT_ID}']" -o json 2>/dev/null | jq -r 'if length > 0 then "true" else "false" end' || echo "false")
+            
+            if [ "$POLICY_EXISTS" = "false" ]; then
+              echo "❌ ERROR: La access policy de AZURE_CREDENTIAL no se creó en el Key Vault"
+              echo "💡 Object ID esperado: $AZURE_CREDENTIAL_OBJECT_ID"
+              echo "💡 Verifica que el terraform apply se ejecutó correctamente"
+              exit 1
+            else
+              echo "✅ Access policy de AZURE_CREDENTIAL verificada en el Key Vault"
+            fi
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
