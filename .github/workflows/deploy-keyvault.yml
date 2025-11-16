@@ -142,6 +142,49 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Verify State Saved to Backend
+        run: |
+          echo "🔍 Verificando que el estado se guardó en Azure Storage..."
+          STATE_KEY="global/terraform.tfstate"
+          echo "📍 Ruta del estado: $STATE_KEY"
+          
+          # Verificar que el blob existe en el storage
+          if az storage blob exists \
+            --account-name "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            --container-name "${{ secrets.AZURE_STATE_CONTAINER }}" \
+            --name "$STATE_KEY" \
+            --auth-mode login \
+            --query exists -o tsv 2>/dev/null | grep -q "true"; then
+            echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/$STATE_KEY"
+            
+            # Obtener información del blob
+            BLOB_INFO=$(az storage blob show \
+              --account-name "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+              --container-name "${{ secrets.AZURE_STATE_CONTAINER }}" \
+              --name "$STATE_KEY" \
+              --auth-mode login \
+              --query "{size:properties.contentLength,lastModified:properties.lastModified}" -o json 2>/dev/null || echo "{}")
+            
+            if [ "$BLOB_INFO" != "{}" ]; then
+              echo "📊 Información del estado:"
+              echo "$BLOB_INFO" | jq -r '"Tamaño: " + (.size | tostring) + " bytes, Última modificación: " + .lastModified'
+            fi
+          else
+            echo "⚠️ No se pudo verificar el blob en Azure Storage (puede ser normal si es la primera ejecución)"
+            echo "📋 Listando estados disponibles en el storage:"
+            az storage blob list \
+              --account-name "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+              --container-name "${{ secrets.AZURE_STATE_CONTAINER }}" \
+              --auth-mode login \
+              --query "[].name" -o tsv 2>/dev/null | head -10 || echo "No se pudieron listar los blobs"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Get Key Vault Name
         id: kv_name
         run: |
@@ -191,6 +234,7 @@ jobs:
           echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
           echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Estado guardado en:** \`${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/global/terraform.tfstate\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -n "${{ steps.kv_name.outputs.key_vault_name }}" ]; then
