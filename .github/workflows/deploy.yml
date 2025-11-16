@@ -70,6 +70,14 @@ jobs:
             echo "❌ Error: DOCKERHUB_TOKEN secret is missing"
             exit 1
           fi
+          if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" ]; then
+            echo "❌ Error: SPRING_CLOUD_CONFIG_SERVER_GIT_URI secret is missing"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" ]; then
+            echo "❌ Error: SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL secret is missing"
+            exit 1
+          fi
           echo "✅ All required secrets are configured"
 
       - name: Setup Azure CLI
@@ -128,6 +136,8 @@ jobs:
             -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
             -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
             -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+            -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
+            -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
             -out=tfplan
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}

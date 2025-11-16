@@ -149,3 +149,20 @@ resource "azurerm_key_vault_secret" "azure_credential" {
   depends_on = [azurerm_key_vault_access_policy.service_principal]
 }
 
+# Secrets de Spring Cloud Config Server
+resource "azurerm_key_vault_secret" "spring_cloud_config_server_git_uri" {
+  name         = "SPRING-CLOUD-CONFIG-SERVER-GIT-URI"
+  value        = var.spring_cloud_config_server_git_uri
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "spring_cloud_config_server_git_default_label" {
+  name         = "SPRING-CLOUD-CONFIG-SERVER-GIT-DEFAULT-LABEL"
+  value        = var.spring_cloud_config_server_git_default_label
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+

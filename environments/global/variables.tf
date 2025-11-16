@@ -74,6 +74,16 @@ variable "azure_credential" {
   sensitive   = true
 }
 
+variable "spring_cloud_config_server_git_uri" {
+  description = "URI del repositorio Git para Spring Cloud Config Server"
+  type        = string
+}
+
+variable "spring_cloud_config_server_git_default_label" {
+  description = "Label por defecto (rama) del repositorio Git para Spring Cloud Config Server"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags a aplicar a los recursos"
   type        = map(string)
