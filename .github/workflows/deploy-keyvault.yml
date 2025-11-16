@@ -100,66 +100,59 @@ jobs:
           CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
           
           # Validar que el JSON sea válido
-          JSON_VALID=$(echo "$CREDENTIAL_JSON" | jq empty 2>&1)
-          if [ $? -ne 0 ]; then
-            echo "⚠️ El JSON no es válido, intentando corregirlo..."
-            echo "📋 Error de validación: $JSON_VALID"
-            
-            # Intentar corregir: agregar comillas a las claves y valores
-            # Primero, intentar agregar comillas a las claves (clientId: -> "clientId":)
-            CREDENTIAL_JSON_FIXED=$(echo "$CREDENTIAL_JSON" | \
-              sed -E 's/^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*:/"\1":/g' | \
-              sed -E 's/:[[:space:]]*([a-zA-Z0-9_-]+)[[:space:]]*([,}])/:"\1"\2/g' 2>/dev/null || echo "$CREDENTIAL_JSON")
-            
-            # Validar nuevamente
-            if echo "$CREDENTIAL_JSON_FIXED" | jq empty 2>/dev/null; then
-              echo "✅ JSON corregido exitosamente"
-              CREDENTIAL_JSON="$CREDENTIAL_JSON_FIXED"
-            else
-              echo "❌ ERROR: No se pudo parsear el JSON de AZURE_CREDENTIAL como JSON válido"
-              echo "📋 Contenido recibido (primeros 500 caracteres):"
-              echo "${{ secrets.AZURE_CREDENTIAL }}" | head -c 500
-              echo ""
-              echo ""
-              echo "💡 El JSON debe tener el formato válido:"
-              echo '{'
-              echo '  "clientId": "c4221b5f-c4f3-400b-9a05-b1804627fcba",'
-              echo '  "clientSecret": "...",'
-              echo '  "subscriptionId": "...",'
-              echo '  "tenantId": "..."'
-              echo '}'
-              echo ""
-              echo "💡 Asegúrate de que:"
-              echo "   1. Todas las claves estén entre comillas dobles: \"clientId\""
-              echo "   2. Todos los valores de string estén entre comillas dobles: \"valor\""
-              echo "   3. No haya comas al final de los objetos"
-              echo "   4. El formato sea JSON válido (puedes validarlo en https://jsonlint.com/)"
-              exit 1
-            fi
+          set +e
+          echo "$CREDENTIAL_JSON" | jq empty >/dev/null 2>&1
+          JSON_VALID=$?
+          set -e
+          
+          if [ $JSON_VALID -ne 0 ]; then
+            echo "❌ ERROR: El JSON de AZURE_CREDENTIAL no es válido"
+            JSON_ERROR=$(echo "$CREDENTIAL_JSON" | jq empty 2>&1 || echo "Error desconocido")
+            echo "📋 Error de validación: $JSON_ERROR"
+            echo "📋 Primeros 300 caracteres del JSON recibido:"
+            echo "$CREDENTIAL_JSON" | head -c 300
+            echo ""
+            exit 1
           fi
           
-          # Intentar extraer clientId (con diferentes variantes)
-          CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
+          echo "✅ JSON válido"
           
-          if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "null" ] || [ "$CLIENT_ID" = "" ]; then
+          # Extraer clientId directamente
+          set +e
+          CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
+          JQ_EXIT=$?
+          set -e
+          
+          if [ $JQ_EXIT -ne 0 ] || [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "null" ] || [ "$CLIENT_ID" = "" ]; then
             echo "❌ ERROR: No se pudo extraer clientId del JSON de AZURE_CREDENTIAL"
-            echo "📋 JSON parseado (primeros 200 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 200)"
+            echo "📋 JSON recibido (primeros 200 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 200)"
             echo "💡 Asegúrate de que el JSON contenga 'clientId' o 'client_id'"
+            echo "📋 Claves disponibles en el JSON:"
+            set +e
+            echo "$CREDENTIAL_JSON" | jq 'keys' 2>/dev/null || echo "No se pudieron listar las claves"
+            set -e
             exit 1
           fi
           
           echo "✅ Client ID encontrado: $CLIENT_ID"
           echo "🔍 Obteniendo Object ID del Service Principal..."
-          CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
           
-          if [ -z "$CREDENTIAL_OBJECT_ID" ] || [ "$CREDENTIAL_OBJECT_ID" = "" ]; then
+          set +e
+          CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+          AZ_EXIT=$?
+          set -e
+          
+          if [ $AZ_EXIT -ne 0 ] || [ -z "$CREDENTIAL_OBJECT_ID" ] || [ "$CREDENTIAL_OBJECT_ID" = "" ]; then
             echo "❌ ERROR: No se pudo obtener el Object ID del Service Principal con clientId: $CLIENT_ID"
             echo "💡 Verificando si el Service Principal existe..."
+            set +e
             SP_INFO=$(az ad sp show --id "$CLIENT_ID" --query "{id:id,appId:appId,displayName:displayName}" -o json 2>&1 || echo "")
-            if [ -n "$SP_INFO" ]; then
+            set -e
+            if [ -n "$SP_INFO" ] && ! echo "$SP_INFO" | grep -q "error"; then
               echo "📋 Información del Service Principal: $SP_INFO"
             else
               echo "❌ Service Principal no encontrado o no tienes permisos para consultarlo"
+              echo "📋 Error: $SP_INFO"
             fi
             echo "💡 Verifica que:"
             echo "   1. El clientId sea correcto: $CLIENT_ID"
