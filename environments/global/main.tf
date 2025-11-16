@@ -40,6 +40,7 @@ module "keyvault" {
   dockerhub_username = var.dockerhub_username
   dockerhub_token    = var.dockerhub_token
   azure_credential   = var.azure_credential
+  azure_credential_object_id = var.azure_credential_object_id
 
   spring_cloud_config_server_git_uri         = var.spring_cloud_config_server_git_uri
   spring_cloud_config_server_git_default_label = var.spring_cloud_config_server_git_default_label

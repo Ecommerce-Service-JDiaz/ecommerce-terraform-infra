@@ -74,6 +74,12 @@ variable "azure_credential" {
   sensitive   = true
 }
 
+variable "azure_credential_object_id" {
+  description = "Object ID del Service Principal de AZURE_CREDENTIAL (opcional)"
+  type        = string
+  default     = ""
+}
+
 variable "spring_cloud_config_server_git_uri" {
   description = "URI del repositorio Git para Spring Cloud Config Server"
   type        = string

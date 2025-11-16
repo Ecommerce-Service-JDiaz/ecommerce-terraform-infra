@@ -87,6 +87,41 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Get AZURE_CREDENTIAL Service Principal Object ID
+        id: azure_credential_object_id
+        run: |
+          if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
+            echo "🔍 Extrayendo client_id de AZURE_CREDENTIAL..."
+            CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
+            CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
+            
+            if [ -n "$CLIENT_ID" ] && [ "$CLIENT_ID" != "null" ] && [ "$CLIENT_ID" != "" ]; then
+              echo "✅ Client ID encontrado: $CLIENT_ID"
+              echo "🔍 Obteniendo Object ID del Service Principal..."
+              CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+              
+              if [ -n "$CREDENTIAL_OBJECT_ID" ]; then
+                echo "✅ Object ID encontrado: $CREDENTIAL_OBJECT_ID"
+                echo "object_id=$CREDENTIAL_OBJECT_ID" >> $GITHUB_OUTPUT
+              else
+                echo "⚠️ No se pudo obtener el Object ID del Service Principal"
+                echo "object_id=" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "⚠️ No se pudo extraer client_id del JSON de AZURE_CREDENTIAL"
+              echo "object_id=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "ℹ️ AZURE_CREDENTIAL no está configurado"
+            echo "object_id=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Ensure Storage Container Exists
         run: |
           echo "🔍 Verificando si el contenedor de almacenamiento existe..."
@@ -162,6 +197,7 @@ jobs:
                 -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                 -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                 -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                -var="azure_credential_object_id=${{ steps.azure_credential_object_id.outputs.object_id }}" \
                 -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                 -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
                 module.keyvault.azurerm_resource_group.global \
@@ -192,6 +228,7 @@ jobs:
                   -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                   -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                   -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                  -var="azure_credential_object_id=${{ steps.azure_credential_object_id.outputs.object_id }}" \
                   -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                   -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
                   module.keyvault.azurerm_key_vault.global \
@@ -251,6 +288,7 @@ jobs:
                   -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                   -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                   -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                  -var="azure_credential_object_id=${{ steps.azure_credential_object_id.outputs.object_id }}" \
                   -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                   -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
                   module.keyvault.azurerm_key_vault_access_policy.service_principal \
@@ -288,6 +326,7 @@ jobs:
             -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
             -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
             -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+            -var="azure_credential_object_id=${{ steps.azure_credential_object_id.outputs.object_id }}" \
             -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
             -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
             -out=tfplan

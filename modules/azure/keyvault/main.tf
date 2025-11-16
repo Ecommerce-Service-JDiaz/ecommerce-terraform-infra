@@ -119,6 +119,85 @@ resource "azurerm_key_vault_access_policy" "service_principal" {
   ]
 }
 
+# Access Policy para el Service Principal de AZURE_CREDENTIAL (permisos completos como admin supremo)
+resource "azurerm_key_vault_access_policy" "azure_credential" {
+  count = var.azure_credential_object_id != "" ? 1 : 0
+
+  key_vault_id = azurerm_key_vault.global.id
+  tenant_id    = var.tenant_id
+  object_id    = var.azure_credential_object_id
+
+  # Permisos completos para Keys
+  key_permissions = [
+    "Get",
+    "List",
+    "Create",
+    "Update",
+    "Delete",
+    "Recover",
+    "Backup",
+    "Restore",
+    "Import",
+    "Decrypt",
+    "Encrypt",
+    "UnwrapKey",
+    "WrapKey",
+    "Verify",
+    "Sign",
+    "Purge"
+  ]
+
+  # Permisos completos para Secrets
+  secret_permissions = [
+    "Get",
+    "List",
+    "Set",
+    "Delete",
+    "Recover",
+    "Backup",
+    "Restore",
+    "Purge"
+  ]
+
+  # Permisos completos para Certificates
+  certificate_permissions = [
+    "Get",
+    "List",
+    "Create",
+    "Update",
+    "Delete",
+    "Recover",
+    "Backup",
+    "Restore",
+    "Import",
+    "ManageContacts",
+    "ManageIssuers",
+    "GetIssuers",
+    "ListIssuers",
+    "SetIssuers",
+    "DeleteIssuers",
+    "Purge"
+  ]
+
+  # Permisos completos para Storage
+  storage_permissions = [
+    "Get",
+    "List",
+    "Delete",
+    "Set",
+    "Update",
+    "RegenerateKey",
+    "Recover",
+    "Purge",
+    "Backup",
+    "Restore",
+    "SetSAS",
+    "ListSAS",
+    "GetSAS",
+    "DeleteSAS"
+  ]
+}
+
 # Access Policy para el System-Assigned Identity del cluster AKS (para que pueda leer)
 # Nota: Esto se actualizará después de crear los clusters
 resource "azurerm_key_vault_access_policy" "aks_identity" {
