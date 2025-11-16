@@ -42,11 +42,33 @@ resource "azurerm_key_vault" "global" {
 }
 
 # Access Policy para el Service Principal (para que GitHub Actions pueda escribir)
+# Permisos completos en Key Vault para gestión total
 resource "azurerm_key_vault_access_policy" "service_principal" {
   key_vault_id = azurerm_key_vault.global.id
   tenant_id    = var.tenant_id
   object_id    = var.service_principal_object_id
 
+  # Permisos completos para Keys
+  key_permissions = [
+    "Get",
+    "List",
+    "Create",
+    "Update",
+    "Delete",
+    "Recover",
+    "Backup",
+    "Restore",
+    "Import",
+    "Decrypt",
+    "Encrypt",
+    "UnwrapKey",
+    "WrapKey",
+    "Verify",
+    "Sign",
+    "Purge"
+  ]
+
+  # Permisos completos para Secrets
   secret_permissions = [
     "Get",
     "List",
@@ -54,7 +76,46 @@ resource "azurerm_key_vault_access_policy" "service_principal" {
     "Delete",
     "Recover",
     "Backup",
-    "Restore"
+    "Restore",
+    "Purge"
+  ]
+
+  # Permisos completos para Certificates
+  certificate_permissions = [
+    "Get",
+    "List",
+    "Create",
+    "Update",
+    "Delete",
+    "Recover",
+    "Backup",
+    "Restore",
+    "Import",
+    "ManageContacts",
+    "ManageIssuers",
+    "GetIssuers",
+    "ListIssuers",
+    "SetIssuers",
+    "DeleteIssuers",
+    "Purge"
+  ]
+
+  # Permisos para Storage (si se usa)
+  storage_permissions = [
+    "Get",
+    "List",
+    "Delete",
+    "Set",
+    "Update",
+    "RegenerateKey",
+    "Recover",
+    "Purge",
+    "Backup",
+    "Restore",
+    "SetSAS",
+    "ListSAS",
+    "GetSAS",
+    "DeleteSAS"
   ]
 }
 
