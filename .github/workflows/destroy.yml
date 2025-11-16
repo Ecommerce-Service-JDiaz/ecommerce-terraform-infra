@@ -141,6 +141,63 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         continue-on-error: true
 
+      - name: Clean AKS Node Resources (if exists)
+        run: |
+          echo "🧹 Limpiando recursos de nodos AKS que puedan estar bloqueando la destrucción..."
+          
+          # Obtener nombres de recursos
+          RESOURCE_GROUP="${{ secrets.RESOURCE_PREFIX }}-rg-${{ matrix.environment }}"
+          CLUSTER_NAME="${{ secrets.CLUSTER_NAME_BASE }}-${{ matrix.environment }}"
+          
+          echo "📍 Resource Group del cluster: $RESOURCE_GROUP"
+          echo "📍 Cluster Name: $CLUSTER_NAME"
+          
+          # Verificar si el cluster existe
+          if az aks show --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+            echo "✅ Cluster AKS encontrado, eliminándolo primero..."
+            az aks delete --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" --yes --no-wait || echo "⚠️ Error al eliminar cluster (puede que ya esté eliminado)"
+            echo "⏳ Esperando 30 segundos para que Azure complete la eliminación..."
+            sleep 30
+          else
+            echo "ℹ️ Cluster AKS no encontrado (puede que ya esté eliminado)"
+          fi
+          
+          # Buscar todos los resource groups MC_* que puedan estar relacionados
+          echo "🔍 Buscando resource groups MC_* relacionados..."
+          MC_GROUPS=$(az group list --query "[?starts_with(name, 'MC_')].name" -o tsv 2>/dev/null || echo "")
+          
+          RESOURCE_GROUP_UPPER=$(echo "$RESOURCE_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+          CLUSTER_NAME_UPPER=$(echo "$CLUSTER_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+          
+          FOUND_ANY=false
+          if [ -n "$MC_GROUPS" ]; then
+            for MC_GROUP in $MC_GROUPS; do
+              # Verificar si el resource group contiene recursos relacionados con este cluster
+              # Buscar por nombre del resource group o cluster (case insensitive)
+              MC_GROUP_UPPER=$(echo "$MC_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+              
+              if echo "$MC_GROUP_UPPER" | grep -qE "(${RESOURCE_GROUP_UPPER}|${CLUSTER_NAME_UPPER})"; then
+                echo "⚠️ Resource Group de nodos encontrado: $MC_GROUP"
+                echo "🗑️ Eliminando resource group de nodos..."
+                az group delete --name "$MC_GROUP" --yes --no-wait || echo "⚠️ Error al eliminar $MC_GROUP"
+                FOUND_ANY=true
+              fi
+            done
+            
+            if [ "$FOUND_ANY" = true ]; then
+              echo "⏳ Esperando 60 segundos para que Azure complete la eliminación..."
+              sleep 60
+            fi
+          else
+            echo "ℹ️ No se encontraron resource groups MC_*"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Destroy
         id: destroy
         run: |
@@ -169,6 +226,45 @@ jobs:
                   -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
               else
                 echo "❌ No se pudo extraer el Lock ID"
+                cat destroy_output.txt
+                exit 1
+              fi
+            elif grep -q "InUseSubnetCannotBeDeleted" destroy_output.txt; then
+              echo "⚠️ Subnet aún en uso, limpiando recursos de nodos AKS..."
+              RESOURCE_GROUP="${{ secrets.RESOURCE_PREFIX }}-rg-${{ matrix.environment }}"
+              CLUSTER_NAME="${{ secrets.CLUSTER_NAME_BASE }}-${{ matrix.environment }}"
+              
+              # Buscar y eliminar todos los resource groups MC_* relacionados
+              echo "🔍 Buscando resource groups MC_* relacionados..."
+              MC_GROUPS=$(az group list --query "[?starts_with(name, 'MC_')].name" -o tsv 2>/dev/null || echo "")
+              
+              RESOURCE_GROUP_UPPER=$(echo "$RESOURCE_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+              CLUSTER_NAME_UPPER=$(echo "$CLUSTER_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+              
+              FOUND_MC_GROUP=false
+              if [ -n "$MC_GROUPS" ]; then
+                for MC_GROUP in $MC_GROUPS; do
+                  MC_GROUP_UPPER=$(echo "$MC_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+                  if echo "$MC_GROUP_UPPER" | grep -qE "(${RESOURCE_GROUP_UPPER}|${CLUSTER_NAME_UPPER})"; then
+                    echo "🗑️ Eliminando resource group de nodos: $MC_GROUP"
+                    az group delete --name "$MC_GROUP" --yes --no-wait
+                    FOUND_MC_GROUP=true
+                  fi
+                done
+              fi
+              
+              if [ "$FOUND_MC_GROUP" = true ]; then
+                echo "⏳ Esperando 90 segundos para que Azure complete la eliminación..."
+                sleep 90
+                echo "🔄 Reintentando destrucción..."
+                terraform destroy -auto-approve \
+                  -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+                  -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                  -var="location=${{ secrets.AZURE_LOCATION }}" \
+                  -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
+              else
+                echo "❌ No se pudo encontrar el resource group MC_* para limpiar"
+                echo "💡 Intenta eliminar manualmente el resource group MC_* desde Azure Portal"
                 cat destroy_output.txt
                 exit 1
               fi

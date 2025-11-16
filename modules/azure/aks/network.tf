@@ -34,25 +34,20 @@ resource "azurerm_subnet" "aks" {
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.1.0/24"]
-
+  
+  # Asegurar que el cluster AKS se destruya antes que la subnet
   lifecycle {
     create_before_destroy = false
   }
 }
 
 # Subnet para nodos del cluster
-# IMPORTANTE: Esta subnet debe destruirse DESPUÉS del cluster AKS
-# porque el cluster usa esta subnet y Azure no permite eliminar subnets en uso
 resource "azurerm_subnet" "nodes" {
   name                 = "${var.resource_prefix}-subnet-nodes-${var.environment}"
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
-
-  # Dependencia explícita para asegurar que el cluster se destruya primero
-  # Terraform respeta depends_on tanto para creación como para destrucción
-  depends_on = [azurerm_kubernetes_cluster.main]
-
+  
   lifecycle {
     create_before_destroy = false
   }

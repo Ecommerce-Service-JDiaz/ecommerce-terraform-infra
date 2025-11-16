@@ -60,12 +60,6 @@ resource "azurerm_kubernetes_cluster" "main" {
   # Azure Monitor para Containers (monitoring básico siempre habilitado)
   azure_policy_enabled = true
 
-  lifecycle {
-    # Asegurar que el cluster se destruya antes que las subnets
-    # Esto previene el error "InUseSubnetCannotBeDeleted"
-    create_before_destroy = false
-  }
-
   tags = merge(
     var.tags,
     {
