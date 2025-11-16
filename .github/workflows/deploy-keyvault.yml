@@ -471,6 +471,8 @@ jobs:
             --certificate-permissions get list create update delete recover backup restore import managecontacts manageissuers getissuers listissuers setissuers deleteissuers purge \
             --storage-permissions get list delete set update regeneratekey recover purge backup restore setsas listsas getsas deletesas \
             --output none
+
+          az keyvault set-policy -n ${KEY_VAULT_NAME} --object-id ${AZURE_CREDENTIAL_OBJECT_ID} --secret-permissions get list
           
           if [ $? -eq 0 ]; then
             echo "✅ Access policy configurada exitosamente para AZURE_CREDENTIAL"
