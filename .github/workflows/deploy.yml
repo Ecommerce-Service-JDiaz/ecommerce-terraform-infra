@@ -10,11 +10,10 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Entorno a desplegar (dejar vacío para todos)'
-        required: false
+        description: 'Entorno a desplegar'
+        required: true
         type: choice
         options:
-          - all
           - dev
           - stage
           - prod
@@ -108,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && fromJSON('["dev", "stage", "prod"]')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'all' && fromJSON('["dev", "stage", "prod"]')) || (github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', github.event.inputs.environment))) || fromJSON('[]') }}
+        environment: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && fromJSON('["dev", "stage", "prod"]')) || (github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', github.event.inputs.environment))) || fromJSON('[]') }}
         include:
           - environment: dev
             resource_group_secret: AZURE_RESOURCE_GROUP_DEV
@@ -122,7 +121,6 @@ jobs:
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && (
-        github.event.inputs.environment == 'all' ||
         github.event.inputs.environment == 'dev' ||
         github.event.inputs.environment == 'stage' ||
         github.event.inputs.environment == 'prod'
