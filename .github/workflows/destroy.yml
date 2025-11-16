@@ -36,21 +36,13 @@ jobs:
           - environment: prod
             resource_group_secret: AZURE_RESOURCE_GROUP_PROD
     if: |
-      (github.event.inputs.environment == 'all' || github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'stage' || github.event.inputs.environment == 'prod') &&
-      github.event.inputs.environment != 'keyvault'
+      github.event.inputs.environment != 'keyvault' &&
+      (github.event.inputs.environment == 'all' ||
+       github.event.inputs.environment == '${{ matrix.environment }}')
     environment:
       name: ${{ matrix.environment }}-destroy
     
     steps:
-      - name: Check Environment Filter
-        run: |
-          if [ "${{ github.event.inputs.environment }}" != "all" ] && [ "${{ github.event.inputs.environment }}" != "${{ matrix.environment }}" ]; then
-            echo "⏭️ Saltando ambiente ${{ matrix.environment }} (solo se destruye ${{ github.event.inputs.environment }})"
-            exit 0
-          fi
-          echo "✅ Destruyendo ambiente ${{ matrix.environment }}"
-        continue-on-error: true
-
       - name: Validate Destroy Confirmation
         run: |
           if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
