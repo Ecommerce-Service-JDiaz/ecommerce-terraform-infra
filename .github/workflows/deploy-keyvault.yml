@@ -427,27 +427,73 @@ jobs:
             echo "ℹ️ No hay cambios que aplicar"
           fi
           
-          # Verificar que la access policy de AZURE_CREDENTIAL se creó correctamente
-          if [ -n "${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" ]; then
-            echo "🔍 Verificando que la access policy de AZURE_CREDENTIAL se creó correctamente..."
-            AZURE_CREDENTIAL_OBJECT_ID="${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}"
-            
-            # Calcular el nombre del Key Vault
-            RESOURCE_PREFIX_CLEAN=$(echo "${{ secrets.RESOURCE_PREFIX }}" | tr -d '-')
-            HASH=$(echo -n "${{ secrets.RESOURCE_PREFIX }}global" | md5sum | cut -c1-4)
-            KEY_VAULT_NAME="${RESOURCE_PREFIX_CLEAN}kv${HASH}"
-            
-            # Verificar si la access policy existe en Azure
-            POLICY_EXISTS=$(az keyvault show --name "$KEY_VAULT_NAME" --resource-group "${{ secrets.RESOURCE_PREFIX }}-rg-global" --query "properties.accessPolicies[?objectId=='${AZURE_CREDENTIAL_OBJECT_ID}']" -o json 2>/dev/null | jq -r 'if length > 0 then "true" else "false" end' || echo "false")
-            
-            if [ "$POLICY_EXISTS" = "false" ]; then
-              echo "❌ ERROR: La access policy de AZURE_CREDENTIAL no se creó en el Key Vault"
-              echo "💡 Object ID esperado: $AZURE_CREDENTIAL_OBJECT_ID"
-              echo "💡 Verifica que el terraform apply se ejecutó correctamente"
-              exit 1
-            else
-              echo "✅ Access policy de AZURE_CREDENTIAL verificada en el Key Vault"
-            fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Set Key Vault Access Policy for AZURE_CREDENTIAL
+        run: |
+          if [ -z "${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" ]; then
+            echo "⚠️ AZURE_CREDENTIAL_OBJECT_ID no está configurado, saltando este paso"
+            exit 0
+          fi
+          
+          echo "🔐 Configurando access policy para AZURE_CREDENTIAL en el Key Vault..."
+          
+          # Calcular el nombre del Key Vault (mismo cálculo que en el módulo)
+          RESOURCE_PREFIX_CLEAN=$(echo "${{ secrets.RESOURCE_PREFIX }}" | tr -d '-')
+          HASH=$(echo -n "${{ secrets.RESOURCE_PREFIX }}global" | md5sum | cut -c1-4)
+          KEY_VAULT_NAME="${RESOURCE_PREFIX_CLEAN}kv${HASH}"
+          RESOURCE_GROUP_NAME="${{ secrets.RESOURCE_PREFIX }}-rg-global"
+          AZURE_CREDENTIAL_OBJECT_ID="${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}"
+          
+          echo "📍 Key Vault: $KEY_VAULT_NAME"
+          echo "📍 Resource Group: $RESOURCE_GROUP_NAME"
+          echo "📍 Object ID: $AZURE_CREDENTIAL_OBJECT_ID"
+          
+          # Verificar que el Key Vault existe
+          if ! az keyvault show --name "$KEY_VAULT_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query id -o tsv >/dev/null 2>&1; then
+            echo "❌ ERROR: El Key Vault no existe: $KEY_VAULT_NAME"
+            echo "💡 Asegúrate de que Terraform haya creado el Key Vault antes de ejecutar este paso"
+            exit 1
+          fi
+          
+          echo "✅ Key Vault encontrado, configurando permisos completos (admin supremo)..."
+          
+          # Configurar permisos completos para Keys, Secrets, Certificates y Storage
+          az keyvault set-policy \
+            --name "$KEY_VAULT_NAME" \
+            --object-id "$AZURE_CREDENTIAL_OBJECT_ID" \
+            --key-permissions get list create update delete recover backup restore import decrypt encrypt unwrapkey wrapkey verify sign purge \
+            --secret-permissions get list set delete recover backup restore purge \
+            --certificate-permissions get list create update delete recover backup restore import managecontacts manageissuers getissuers listissuers setissuers deleteissuers purge \
+            --storage-permissions get list delete set update regeneratekey recover purge backup restore setsas listsas getsas deletesas \
+            --output none
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Access policy configurada exitosamente para AZURE_CREDENTIAL"
+            echo "✅ Permisos completos (admin supremo) otorgados"
+          else
+            echo "❌ ERROR: No se pudo configurar la access policy"
+            echo "💡 Verifica que:"
+            echo "   1. El Object ID sea correcto: $AZURE_CREDENTIAL_OBJECT_ID"
+            echo "   2. Tengas permisos para modificar el Key Vault"
+            echo "   3. El Key Vault exista y esté accesible"
+            exit 1
+          fi
+          
+          # Verificar que la policy se aplicó correctamente
+          echo "🔍 Verificando que la access policy se aplicó correctamente..."
+          POLICY_EXISTS=$(az keyvault show --name "$KEY_VAULT_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query "properties.accessPolicies[?objectId=='${AZURE_CREDENTIAL_OBJECT_ID}']" -o json 2>/dev/null | jq -r 'if length > 0 then "true" else "false" end' || echo "false")
+          
+          if [ "$POLICY_EXISTS" = "false" ]; then
+            echo "❌ ERROR: La access policy no se aplicó correctamente"
+            echo "💡 Object ID: $AZURE_CREDENTIAL_OBJECT_ID"
+            exit 1
+          else
+            echo "✅ Access policy verificada en el Key Vault"
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
