@@ -111,22 +111,76 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         continue-on-error: true
 
+      - name: Force Unlock State (if locked)
+        run: |
+          echo "🔓 Verificando si el estado está bloqueado..."
+          set +e
+          terraform plan \
+            -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+            -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+            -var="location=${{ secrets.AZURE_LOCATION }}" \
+            -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}" \
+            -lock=false 2>&1 | tee unlock_check.txt
+          set -e
+          
+          if grep -q "state blob is already locked" unlock_check.txt; then
+            echo "⚠️ Estado bloqueado detectado, extrayendo Lock ID..."
+            LOCK_ID=$(grep -oP 'ID:\s+\K[a-f0-9-]+' unlock_check.txt | head -1 || echo "")
+            if [ -n "$LOCK_ID" ]; then
+              echo "🔓 Liberando lock: $LOCK_ID"
+              terraform force-unlock -force "$LOCK_ID" || echo "⚠️ No se pudo liberar el lock (puede que ya esté liberado)"
+            fi
+          else
+            echo "✅ Estado no está bloqueado"
+          fi
+          rm -f unlock_check.txt
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Destroy
         id: destroy
         run: |
           echo "🗑️ Iniciando destrucción de infraestructura ${{ matrix.environment }}..."
+          set +e
           terraform destroy -auto-approve \
             -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
             -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
             -var="location=${{ secrets.AZURE_LOCATION }}" \
-            -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
-          DESTROY_EXIT_CODE=$?
-          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
-            echo "✅ Destrucción completada exitosamente"
+            -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}" 2>&1 | tee destroy_output.txt
+          DESTROY_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          
+          if [ "$DESTROY_EXIT_CODE" -ne 0 ]; then
+            if grep -q "state blob is already locked" destroy_output.txt; then
+              echo "⚠️ Estado aún bloqueado, extrayendo Lock ID y liberando..."
+              LOCK_ID=$(grep -oP 'ID:\s+\K[a-f0-9-]+' destroy_output.txt | head -1 || echo "")
+              if [ -n "$LOCK_ID" ]; then
+                echo "🔓 Liberando lock: $LOCK_ID"
+                terraform force-unlock -force "$LOCK_ID"
+                echo "🔄 Reintentando destrucción..."
+                terraform destroy -auto-approve \
+                  -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+                  -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                  -var="location=${{ secrets.AZURE_LOCATION }}" \
+                  -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
+              else
+                echo "❌ No se pudo extraer el Lock ID"
+                cat destroy_output.txt
+                exit 1
+              fi
+            else
+              echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
+              cat destroy_output.txt
+              exit $DESTROY_EXIT_CODE
+            fi
           else
-            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
-            exit $DESTROY_EXIT_CODE
+            echo "✅ Destrucción completada exitosamente"
           fi
+          rm -f destroy_output.txt
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -285,11 +339,42 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         continue-on-error: true
 
+      - name: Force Unlock State (if locked)
+        run: |
+          cd environments/global
+          echo "🔓 Verificando si el estado está bloqueado..."
+          set +e
+          terraform destroy -auto-approve \
+            -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+            -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+            -var="location=${{ secrets.AZURE_LOCATION }}" \
+            -lock=false 2>&1 | tee unlock_check.txt
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          
+          if grep -q "state blob is already locked" unlock_check.txt; then
+            echo "⚠️ Estado bloqueado detectado, extrayendo Lock ID..."
+            LOCK_ID=$(grep -oP 'ID:\s+\K[^\s]+' unlock_check.txt | head -1 || echo "")
+            if [ -n "$LOCK_ID" ]; then
+              echo "🔓 Liberando lock: $LOCK_ID"
+              terraform force-unlock -force "$LOCK_ID" || echo "⚠️ No se pudo liberar el lock (puede que ya esté liberado)"
+            fi
+          fi
+          rm -f unlock_check.txt
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Destroy
         id: destroy
         run: |
           cd environments/global
           echo "🗑️ Iniciando destrucción de Key Vault Global..."
+          set +e
           terraform destroy -auto-approve \
             -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
             -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
@@ -305,14 +390,48 @@ jobs:
             -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
             -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
             -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
-            -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}"
-          DESTROY_EXIT_CODE=$?
-          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
-            echo "✅ Destrucción completada exitosamente"
+            -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" 2>&1 | tee destroy_output.txt
+          DESTROY_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          
+          if [ "$DESTROY_EXIT_CODE" -ne 0 ]; then
+            if grep -q "state blob is already locked" destroy_output.txt; then
+              echo "⚠️ Estado aún bloqueado, extrayendo Lock ID y liberando..."
+              LOCK_ID=$(grep -oP 'ID:\s+\K[a-f0-9-]+' destroy_output.txt | head -1 || echo "")
+              if [ -n "$LOCK_ID" ]; then
+                echo "🔓 Liberando lock: $LOCK_ID"
+                terraform force-unlock -force "$LOCK_ID"
+                echo "🔄 Reintentando destrucción..."
+                terraform destroy -auto-approve \
+                  -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+                  -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+                  -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                  -var="location=${{ secrets.AZURE_LOCATION }}" \
+                  -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
+                  -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
+                  -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
+                  -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
+                  -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+                  -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                  -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+                  -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
+                  -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                  -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
+                  -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}"
+              else
+                echo "❌ No se pudo extraer el Lock ID"
+                cat destroy_output.txt
+                exit 1
+              fi
+            else
+              echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
+              cat destroy_output.txt
+              exit $DESTROY_EXIT_CODE
+            fi
           else
-            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
-            exit $DESTROY_EXIT_CODE
+            echo "✅ Destrucción completada exitosamente"
           fi
+          rm -f destroy_output.txt
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}

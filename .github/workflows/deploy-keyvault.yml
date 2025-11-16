@@ -270,11 +270,65 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Force Unlock State (if locked)
+        run: |
+          cd environments/global
+          echo "🔓 Verificando si el estado está bloqueado..."
+          set +e
+          terraform plan \
+            -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+            -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+            -var="location=${{ secrets.AZURE_LOCATION }}" \
+            -lock=false 2>&1 | tee unlock_check.txt
+          set -e
+          
+          if grep -q "state blob is already locked" unlock_check.txt; then
+            echo "⚠️ Estado bloqueado detectado, extrayendo Lock ID..."
+            LOCK_ID=$(grep -oP 'ID:\s+\K[a-f0-9-]+' unlock_check.txt | head -1 || echo "")
+            if [ -n "$LOCK_ID" ]; then
+              echo "🔓 Liberando lock: $LOCK_ID"
+              terraform force-unlock -force "$LOCK_ID" || echo "⚠️ No se pudo liberar el lock (puede que ya esté liberado)"
+            fi
+          fi
+          rm -f unlock_check.txt
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Apply
         run: |
           cd environments/global
           if [ -f tfplan ]; then
-            terraform apply -auto-approve tfplan
+            set +e
+            terraform apply -auto-approve tfplan 2>&1 | tee apply_output.txt
+            APPLY_EXIT_CODE=${PIPESTATUS[0]}
+            set -e
+            
+            if [ "$APPLY_EXIT_CODE" -ne 0 ]; then
+              if grep -q "state blob is already locked" apply_output.txt; then
+                echo "⚠️ Estado aún bloqueado, extrayendo Lock ID y liberando..."
+                LOCK_ID=$(grep -oP 'ID:\s+\K[a-f0-9-]+' apply_output.txt | head -1 || echo "")
+                if [ -n "$LOCK_ID" ]; then
+                  echo "🔓 Liberando lock: $LOCK_ID"
+                  terraform force-unlock -force "$LOCK_ID"
+                  echo "🔄 Reintentando apply..."
+                  terraform apply -auto-approve tfplan
+                else
+                  echo "❌ No se pudo extraer el Lock ID"
+                  cat apply_output.txt
+                  exit 1
+                fi
+              else
+                echo "❌ Error durante el apply"
+                cat apply_output.txt
+                exit $APPLY_EXIT_CODE
+              fi
+            fi
+            rm -f apply_output.txt
           else
             echo "ℹ️ No hay cambios que aplicar"
           fi
