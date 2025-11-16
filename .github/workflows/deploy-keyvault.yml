@@ -89,15 +89,21 @@ jobs:
 
       - name: Get AZURE_CREDENTIAL Service Principal Object ID
         id: azure_credential_object_id
+        env:
+          AZURE_CREDENTIAL: ${{ secrets.AZURE_CREDENTIAL }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
-          if [ -z "${{ secrets.AZURE_CREDENTIAL }}" ]; then
+          if [ -z "$AZURE_CREDENTIAL" ]; then
             echo "❌ ERROR: AZURE_CREDENTIAL no está configurado en los secrets"
             echo "💡 Por favor, configura el secret AZURE_CREDENTIAL con el JSON de credenciales"
             exit 1
           fi
           
           echo "🔍 Extrayendo clientId de AZURE_CREDENTIAL..."
-          CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
+          CREDENTIAL_JSON="$AZURE_CREDENTIAL"
           
           # Validar que el JSON sea válido
           set +e
@@ -163,11 +169,6 @@ jobs:
           
           echo "✅ Object ID encontrado: $CREDENTIAL_OBJECT_ID"
           echo "object_id=$CREDENTIAL_OBJECT_ID" >> $GITHUB_OUTPUT
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
       - name: Ensure Storage Container Exists
         run: |
