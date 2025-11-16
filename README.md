@@ -119,17 +119,9 @@ Guarda el output del comando anterior, necesitarás:
 
 ### 3. Configurar GitHub Secrets
 
-Ve a **Settings → Secrets and variables → Actions** en tu repositorio y agrega:
+Ve a **Settings → Secrets and variables → Actions** en tu repositorio y agrega todos los secrets.
 
-- `AZURE_CLIENT_ID`
-- `AZURE_CLIENT_SECRET`
-- `AZURE_SUBSCRIPTION_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_STATE_RESOURCE_GROUP`
-- `AZURE_STATE_STORAGE_ACCOUNT`
-- `AZURE_STATE_CONTAINER`
-
-**Ver documentación completa:** [GITHUB_SECRETS.md](GITHUB_SECRETS.md)
+**Ver tabla completa con todos los secrets:** [GITHUB_SECRETS.md](GITHUB_SECRETS.md)
 
 ### 4. Configurar GitHub Environments (Opcional pero Recomendado)
 

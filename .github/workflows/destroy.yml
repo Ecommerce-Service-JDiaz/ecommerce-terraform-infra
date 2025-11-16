@@ -21,21 +21,44 @@ env:
   TF_VERSION: '1.6.0'
 
 jobs:
-  terraform-destroy-dev:
-    name: Destroy Dev
+  terraform-destroy:
+    name: Destroy ${{ matrix.environment }}
     runs-on: ubuntu-latest
-    if: github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'all'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: dev
+            resource_group_secret: AZURE_RESOURCE_GROUP_DEV
+          - environment: stage
+            resource_group_secret: AZURE_RESOURCE_GROUP_STAGE
+          - environment: prod
+            resource_group_secret: AZURE_RESOURCE_GROUP_PROD
+    if: |
+      github.event.inputs.environment == 'all' ||
+      github.event.inputs.environment == 'dev' ||
+      github.event.inputs.environment == 'stage' ||
+      github.event.inputs.environment == 'prod'
     environment:
-      name: dev-destroy
+      name: ${{ matrix.environment }}-destroy
     
     steps:
+      - name: Check Environment Filter
+        run: |
+          if [ "${{ github.event.inputs.environment }}" != "all" ] && [ "${{ github.event.inputs.environment }}" != "${{ matrix.environment }}" ]; then
+            echo "⏭️ Saltando ambiente ${{ matrix.environment }} (solo se destruye ${{ github.event.inputs.environment }})"
+            exit 0
+          fi
+          echo "✅ Destruyendo ambiente ${{ matrix.environment }}"
+        continue-on-error: true
+
       - name: Validate Destroy Confirmation
         run: |
           if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
             echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
             exit 1
           fi
-          echo "✅ Confirmación de destrucción recibida para dev"
+          echo "✅ Confirmación de destrucción recibida para ${{ matrix.environment }}"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,34 +71,25 @@ jobs:
 
       - name: Validate Secrets
         run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+          MISSING_SECRETS=()
+          
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then MISSING_SECRETS+=("AZURE_STATE_RESOURCE_GROUP"); fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then MISSING_SECRETS+=("AZURE_STATE_STORAGE_ACCOUNT"); fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then MISSING_SECRETS+=("AZURE_STATE_CONTAINER"); fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then MISSING_SECRETS+=("AZURE_CLIENT_ID"); fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then MISSING_SECRETS+=("AZURE_CLIENT_SECRET"); fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then MISSING_SECRETS+=("AZURE_SUBSCRIPTION_ID"); fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then MISSING_SECRETS+=("AZURE_TENANT_ID"); fi
+          if [ -z "${{ secrets.RESOURCE_PREFIX }}" ]; then MISSING_SECRETS+=("RESOURCE_PREFIX"); fi
+          if [ -z "${{ secrets.AZURE_LOCATION }}" ]; then MISSING_SECRETS+=("AZURE_LOCATION"); fi
+          if [ -z "${{ secrets.CLUSTER_NAME_BASE }}" ]; then MISSING_SECRETS+=("CLUSTER_NAME_BASE"); fi
+          
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "❌ Error: Missing required secrets:"
+            printf '  - %s\n' "${MISSING_SECRETS[@]}"
             exit 1
           fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
-            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
-            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
-            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
-            echo "❌ Error: AZURE_TENANT_ID secret is missing"
-            exit 1
-          fi
+          
           echo "✅ All required secrets are configured"
 
       - name: Terraform Init
@@ -85,7 +99,7 @@ jobs:
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="key=${{ matrix.environment }}/terraform.tfstate" \
             -reconfigure
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -113,8 +127,12 @@ jobs:
       - name: Terraform Destroy
         id: destroy
         run: |
-          echo "🗑️ Iniciando destrucción de infraestructura dev..."
-          terraform destroy -auto-approve -var-file=environments/dev/terraform.tfvars
+          echo "🗑️ Iniciando destrucción de infraestructura ${{ matrix.environment }}..."
+          terraform destroy -auto-approve \
+            -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+            -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+            -var="location=${{ secrets.AZURE_LOCATION }}" \
+            -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
           DESTROY_EXIT_CODE=$?
           if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
             echo "✅ Destrucción completada exitosamente"
@@ -130,238 +148,8 @@ jobs:
 
       - name: Destroy Summary
         run: |
-          echo "## 🗑️ Infraestructura Dev Destruida" >> $GITHUB_STEP_SUMMARY
+          echo "## 🗑️ Infraestructura ${{ matrix.environment }} Destruida" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Entorno:** dev" >> $GITHUB_STEP_SUMMARY
-          echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
-
-  terraform-destroy-stage:
-    name: Destroy Stage
-    runs-on: ubuntu-latest
-    if: github.event.inputs.environment == 'stage' || github.event.inputs.environment == 'all'
-    environment:
-      name: stage-destroy
-    
-    steps:
-      - name: Validate Destroy Confirmation
-        run: |
-          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
-            exit 1
-          fi
-          echo "✅ Confirmación de destrucción recibida para stage"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Validate Secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
-            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
-            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
-            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
-            echo "❌ Error: AZURE_TENANT_ID secret is missing"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-
-      - name: Terraform Init
-        id: init
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=stage/terraform.tfstate" \
-            -reconfigure
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Check State
-        run: |
-          if terraform state list 2>/dev/null | grep -q .; then
-            echo "✅ Estado encontrado con recursos:"
-            terraform state list
-          else
-            echo "⚠️ Estado vacío o no existe - no hay nada que destruir"
-            echo "✅ Saltando destroy (no hay recursos en el estado)"
-            exit 0
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Terraform Destroy
-        id: destroy
-        run: |
-          echo "🗑️ Iniciando destrucción de infraestructura stage..."
-          terraform destroy -auto-approve -var-file=environments/stage/terraform.tfvars
-          DESTROY_EXIT_CODE=$?
-          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
-            echo "✅ Destrucción completada exitosamente"
-          else
-            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
-            exit $DESTROY_EXIT_CODE
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Destroy Summary
-        run: |
-          echo "## 🗑️ Infraestructura Stage Destruida" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Entorno:** stage" >> $GITHUB_STEP_SUMMARY
-          echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
-
-  terraform-destroy-prod:
-    name: Destroy Prod
-    runs-on: ubuntu-latest
-    if: github.event.inputs.environment == 'prod' || github.event.inputs.environment == 'all'
-    environment:
-      name: prod-destroy
-    
-    steps:
-      - name: Validate Destroy Confirmation
-        run: |
-          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
-            echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
-            exit 1
-          fi
-          echo "✅ Confirmación de destrucción recibida para prod"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Validate Secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then
-            echo "❌ Error: AZURE_CLIENT_ID secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then
-            echo "❌ Error: AZURE_CLIENT_SECRET secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then
-            echo "❌ Error: AZURE_SUBSCRIPTION_ID secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then
-            echo "❌ Error: AZURE_TENANT_ID secret is missing"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-
-      - name: Terraform Init
-        id: init
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=prod/terraform.tfstate" \
-            -reconfigure
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Check State
-        run: |
-          if terraform state list 2>/dev/null | grep -q .; then
-            echo "✅ Estado encontrado con recursos:"
-            terraform state list
-          else
-            echo "⚠️ Estado vacío o no existe - no hay nada que destruir"
-            echo "✅ Saltando destroy (no hay recursos en el estado)"
-            exit 0
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Terraform Destroy
-        id: destroy
-        run: |
-          echo "🗑️ Iniciando destrucción de infraestructura prod..."
-          terraform destroy -auto-approve -var-file=environments/prod/terraform.tfvars
-          DESTROY_EXIT_CODE=$?
-          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
-            echo "✅ Destrucción completada exitosamente"
-          else
-            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
-            exit $DESTROY_EXIT_CODE
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Destroy Summary
-        run: |
-          echo "## 🗑️ Infraestructura Prod Destruida" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Entorno:** prod" >> $GITHUB_STEP_SUMMARY
+          echo "**Entorno:** ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY

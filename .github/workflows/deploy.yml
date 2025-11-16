@@ -10,155 +10,19 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Entorno a desplegar'
-        required: true
+        description: 'Entorno a desplegar (dejar vacío para todos)'
+        required: false
         type: choice
         options:
+          - all
           - dev
           - stage
           - prod
 
 env:
   TF_VERSION: '1.6.0'
-  AZURE_CLI_VERSION: '2.0'
 
 jobs:
-  deploy-keyvault-global:
-    name: Deploy Key Vault Global
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    environment:
-      name: global
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Validate Secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" ]; then
-            echo "❌ Error: AZURE_RESOURCE_GROUP_DEV secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AKS_CLUSTER_NAME_DEV }}" ]; then
-            echo "❌ Error: AKS_CLUSTER_NAME_DEV secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
-            echo "❌ Error: DOCKERHUB_USERNAME secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-            echo "❌ Error: DOCKERHUB_TOKEN secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" ]; then
-            echo "❌ Error: SPRING_CLOUD_CONFIG_SERVER_GIT_URI secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" ]; then
-            echo "❌ Error: SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL secret is missing"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-
-      - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az login --service-principal \
-            -u "$ARM_CLIENT_ID" \
-            -p "$ARM_CLIENT_SECRET" \
-            --tenant "$ARM_TENANT_ID" \
-            --output none
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Get Service Principal Object ID
-        id: sp_object_id
-        run: |
-          SP_OBJECT_ID=$(az ad sp show --id "$ARM_CLIENT_ID" --query id -o tsv)
-          echo "object_id=$SP_OBJECT_ID" >> $GITHUB_OUTPUT
-          echo "Service Principal Object ID: $SP_OBJECT_ID"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Terraform Init
-        run: |
-          cd environments/global
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=global/terraform.tfstate" \
-            -reconfigure
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Terraform Plan
-        run: |
-          cd environments/global
-          terraform plan \
-            -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
-            -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
-            -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
-            -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
-            -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
-            -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
-            -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
-            -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
-            -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
-            -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
-            -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
-            -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
-            -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
-            -out=tfplan
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Terraform Apply
-        run: |
-          cd environments/global
-          if [ -f tfplan ]; then
-            terraform apply -auto-approve tfplan
-          else
-            echo "ℹ️ No hay cambios que aplicar"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
@@ -238,14 +102,38 @@ jobs:
               body: output
             })
 
-  terraform-apply-dev:
-    name: Deploy Dev
+  terraform-apply:
+    name: Deploy ${{ matrix.environment }}
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: dev
+            resource_group_secret: AZURE_RESOURCE_GROUP_DEV
+            cluster_name_secret: AKS_CLUSTER_NAME_DEV
+          - environment: stage
+            resource_group_secret: AZURE_RESOURCE_GROUP_STAGE
+            cluster_name_secret: AKS_CLUSTER_NAME_STAGE
+          - environment: prod
+            resource_group_secret: AZURE_RESOURCE_GROUP_PROD
+            cluster_name_secret: AKS_CLUSTER_NAME_PROD
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'all' || github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'stage' || github.event.inputs.environment == 'prod'))
     environment:
-      name: dev
+      name: ${{ matrix.environment }}
     
     steps:
+      - name: Check Environment Filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.environment }}" != "all" ] && [ "${{ github.event.inputs.environment }}" != "${{ matrix.environment }}" ]; then
+            echo "⏭️ Saltando ambiente ${{ matrix.environment }} (solo se despliega ${{ github.event.inputs.environment }})"
+            exit 0
+          fi
+          echo "✅ Desplegando ambiente ${{ matrix.environment }}"
+        continue-on-error: true
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -257,18 +145,37 @@ jobs:
 
       - name: Validate Secrets
         run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
+          MISSING_SECRETS=()
+          
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then MISSING_SECRETS+=("AZURE_STATE_RESOURCE_GROUP"); fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then MISSING_SECRETS+=("AZURE_STATE_STORAGE_ACCOUNT"); fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then MISSING_SECRETS+=("AZURE_STATE_CONTAINER"); fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then MISSING_SECRETS+=("AZURE_CLIENT_ID"); fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then MISSING_SECRETS+=("AZURE_CLIENT_SECRET"); fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then MISSING_SECRETS+=("AZURE_SUBSCRIPTION_ID"); fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then MISSING_SECRETS+=("AZURE_TENANT_ID"); fi
+          if [ -z "${{ secrets.RESOURCE_PREFIX }}" ]; then MISSING_SECRETS+=("RESOURCE_PREFIX"); fi
+          if [ -z "${{ secrets.AZURE_LOCATION }}" ]; then MISSING_SECRETS+=("AZURE_LOCATION"); fi
+          if [ -z "${{ secrets.CLUSTER_NAME_BASE }}" ]; then MISSING_SECRETS+=("CLUSTER_NAME_BASE"); fi
+          
+          # Validar secrets específicos del ambiente
+          if [ "${{ matrix.environment }}" = "dev" ]; then
+            if [ -z "${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" ]; then MISSING_SECRETS+=("AZURE_RESOURCE_GROUP_DEV"); fi
+            if [ -z "${{ secrets.AKS_CLUSTER_NAME_DEV }}" ]; then MISSING_SECRETS+=("AKS_CLUSTER_NAME_DEV"); fi
+          elif [ "${{ matrix.environment }}" = "stage" ]; then
+            if [ -z "${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" ]; then MISSING_SECRETS+=("AZURE_RESOURCE_GROUP_STAGE"); fi
+            if [ -z "${{ secrets.AKS_CLUSTER_NAME_STAGE }}" ]; then MISSING_SECRETS+=("AKS_CLUSTER_NAME_STAGE"); fi
+          elif [ "${{ matrix.environment }}" = "prod" ]; then
+            if [ -z "${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" ]; then MISSING_SECRETS+=("AZURE_RESOURCE_GROUP_PROD"); fi
+            if [ -z "${{ secrets.AKS_CLUSTER_NAME_PROD }}" ]; then MISSING_SECRETS+=("AKS_CLUSTER_NAME_PROD"); fi
+          fi
+          
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "❌ Error: Missing required secrets:"
+            printf '  - %s\n' "${MISSING_SECRETS[@]}"
             exit 1
           fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
+          
           echo "✅ All required secrets are configured"
 
       - name: Terraform Init
@@ -279,7 +186,7 @@ jobs:
             -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=dev/terraform.tfstate" \
+            -backend-config="key=${{ matrix.environment }}/terraform.tfstate" \
             -reconfigure
           echo "✅ Terraform inicializado"
         env:
@@ -288,28 +195,11 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
-      - name: Verify Backend Configuration
-        run: |
-          echo "🔍 Verificando configuración del backend..."
-          if [ -f .terraform/terraform.tfstate ]; then
-            echo "✅ Backend configurado correctamente"
-            echo "📋 Información del backend:"
-            cat .terraform/terraform.tfstate | grep -A 10 "backend" || echo "Backend configurado (detalles en logs de init)"
-          else
-            echo "⚠️ No se encontró archivo de estado del backend"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
       - name: Check State
         run: |
           if terraform state list 2>/dev/null | grep -q .; then
             echo "✅ Estado encontrado con recursos existentes"
-            terraform state list
+            terraform state list | head -20
           else
             echo "ℹ️ Estado vacío o no existe (primera ejecución)"
           fi
@@ -338,29 +228,21 @@ jobs:
         run: |
           echo "🧹 Limpiando recursos huérfanos del estado de Terraform..."
           
-          # Eliminar módulo de Kubernetes ConfigMap si existe (se crea con kubectl, no con Terraform)
-          if terraform state list 2>/dev/null | grep -q "module.k8s_configmaps"; then
-            echo "⚠️ Encontrado módulo k8s_configmaps en el estado - eliminando..."
-            terraform state list | grep "module.k8s_configmaps" | while read resource; do
-              echo "Eliminando: $resource"
-              terraform state rm "$resource" 2>&1 || echo "No se pudo eliminar $resource (puede que ya no exista)"
-            done
-          fi
+          ORPHANED_RESOURCES=(
+            "module.k8s_configmaps"
+            "azurerm_resource_group.keyvault"
+            "module.keyvault"
+          )
           
-          # Eliminar Resource Group del Key Vault si existe (está en environments/global, no aquí)
-          if terraform state list 2>/dev/null | grep -q "azurerm_resource_group.keyvault"; then
-            echo "⚠️ Encontrado azurerm_resource_group.keyvault en el estado - eliminando..."
-            terraform state rm azurerm_resource_group.keyvault 2>&1 || echo "No se pudo eliminar (puede que ya no exista)"
-          fi
-          
-          # Eliminar módulo keyvault si existe (está en environments/global, no aquí)
-          if terraform state list 2>/dev/null | grep -q "module.keyvault"; then
-            echo "⚠️ Encontrado módulo keyvault en el estado - eliminando..."
-            terraform state list | grep "module.keyvault" | while read resource; do
-              echo "Eliminando: $resource"
-              terraform state rm "$resource" 2>&1 || echo "No se pudo eliminar $resource (puede que ya no exista)"
-            done
-          fi
+          for resource in "${ORPHANED_RESOURCES[@]}"; do
+            if terraform state list 2>/dev/null | grep -q "$resource"; then
+              echo "⚠️ Encontrado $resource en el estado - eliminando..."
+              terraform state list | grep "$resource" | while read res; do
+                echo "Eliminando: $res"
+                terraform state rm "$res" 2>&1 || echo "No se pudo eliminar $res"
+              done
+            fi
+          done
           
           echo "✅ Limpieza del estado completada"
         env:
@@ -373,33 +255,37 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
-          # Limpiar cualquier plan file anterior
           rm -f tfplan plan_output.txt
           
           set +e
-          terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
+          terraform plan \
+            -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+            -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+            -var="location=${{ secrets.AZURE_LOCATION }}" \
+            -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}" \
+            -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
           PLAN_EXIT_CODE=${PIPESTATUS[0]}
           set -e
           
-          # Si el plan falló con error (exit code 1), verificar si es por recursos existentes
           if [ "$PLAN_EXIT_CODE" = "1" ]; then
-            # Verificar si el plan file se creó (no debería si hubo un error real)
             if [ -f tfplan ]; then
-              # Si el plan file existe pero el exit code es 1, el plan está corrupto
               echo "❌ Error: Plan file creado pero con código de error 1 (plan incompleto)"
-              echo "📋 Mostrando salida completa del plan:"
               cat plan_output.txt
               rm -f tfplan
               exit 1
             fi
             
-            # Si no hay plan file, verificar si es por recursos existentes
             if grep -q "already exists" plan_output.txt; then
               echo "⚠️ Detectados recursos existentes que no están en el estado"
               echo "🔄 Intentando importar recursos existentes..."
               
-              # Importar Resource Group si existe
-              RG_NAME="ecommerce-rg-dev"
+              if [ "${{ matrix.environment }}" = "dev" ]; then
+                RG_NAME="${{ secrets.AZURE_RESOURCE_GROUP_DEV }}"
+              elif [ "${{ matrix.environment }}" = "stage" ]; then
+                RG_NAME="${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}"
+              elif [ "${{ matrix.environment }}" = "prod" ]; then
+                RG_NAME="${{ secrets.AZURE_RESOURCE_GROUP_PROD }}"
+              fi
               if az group show --name "$RG_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
                 RG_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME"
                 echo "Importando Resource Group: $RG_NAME"
@@ -409,130 +295,54 @@ jobs:
               echo "🔄 Re-ejecutando plan después de importar..."
               rm -f tfplan plan_output.txt
               set +e
-              terraform plan -var-file=environments/dev/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
+              terraform plan \
+                -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+                -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                -var="location=${{ secrets.AZURE_LOCATION }}" \
+                -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}" \
+                -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt
               PLAN_EXIT_CODE=${PIPESTATUS[0]}
               set -e
               
-              if [ "$PLAN_EXIT_CODE" = "1" ]; then
-                # Si aún falla, verificar si hay plan file
-                if [ -f tfplan ]; then
-                  echo "❌ Error: Plan file creado pero con código de error 1 (plan incompleto)"
-                  cat plan_output.txt
-                  rm -f tfplan
-                  exit 1
-                elif grep -q "already exists" plan_output.txt; then
-                  echo "ℹ️ Algunos recursos aún existen pero no se pueden importar automáticamente"
-                  echo "✅ Continuando sin cambios (los recursos ya están desplegados)"
-                  PLAN_EXIT_CODE=0
-                else
-                  echo "❌ Error en el plan después de importar"
-                  cat plan_output.txt
-                  exit 1
-                fi
+              if [ "$PLAN_EXIT_CODE" = "1" ] && [ -f tfplan ]; then
+                echo "❌ Error: Plan aún incompleto después de importar"
+                cat plan_output.txt
+                rm -f tfplan
+                exit 1
               fi
             else
-              echo "❌ Error en el plan que no es por recursos existentes"
-              echo "📋 Mostrando salida completa del plan:"
+              echo "❌ Error durante el plan:"
               cat plan_output.txt
               exit 1
             fi
-          elif [ "$PLAN_EXIT_CODE" = "2" ]; then
-            echo "✅ Plan exitoso - hay cambios que aplicar"
-            # Verificar que el plan file es válido
-            if [ ! -f tfplan ]; then
-              echo "❌ Error: Plan exitoso pero no se creó el plan file"
-              exit 1
-            fi
-            if terraform show -json tfplan > /dev/null 2>&1; then
-              echo "✅ Plan file válido"
-            else
-              echo "❌ Error: El plan file está corrupto o incompleto"
-              echo "📋 Mostrando salida del plan:"
-              cat plan_output.txt
-              rm -f tfplan
-              exit 1
-            fi
+          fi
+          
+          if [ "$PLAN_EXIT_CODE" = "2" ]; then
+            echo "✅ Plan generado con cambios a aplicar"
           elif [ "$PLAN_EXIT_CODE" = "0" ]; then
-            echo "✅ Plan exitoso - no hay cambios (la infraestructura está actualizada)"
+            echo "ℹ️ No hay cambios que aplicar"
             rm -f tfplan
-          else
-            echo "⚠️ Código de salida inesperado: $PLAN_EXIT_CODE"
-            echo "📋 Mostrando salida del plan:"
-            cat plan_output.txt
-            rm -f tfplan
-            exit 1
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Verify Plan File
-        run: |
-          if [ ! -f tfplan ]; then
-            echo "ℹ️ No hay cambios que aplicar - la infraestructura ya está desplegada y actualizada"
-            echo "✅ Saltando apply (no se requiere acción)"
-            exit 0
-          fi
-          
-          # Verificar que el plan es válido
-          echo "🔍 Verificando que el plan es válido..."
-          if terraform show -json tfplan > /dev/null 2>&1; then
-            echo "✅ Plan file válido - hay cambios que aplicar"
-          else
-            echo "❌ Error: El plan file está corrupto o incompleto"
-            echo "📋 Intentando mostrar información del plan:"
-            terraform show tfplan 2>&1 | head -100 || echo "No se puede mostrar el plan"
-            exit 1
-          fi
 
       - name: Terraform Apply
-        id: apply
         run: |
           if [ -f tfplan ]; then
             echo "🚀 Aplicando cambios de Terraform..."
             terraform apply -auto-approve tfplan
-            APPLY_EXIT_CODE=$?
-            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
-              echo "✅ Cambios aplicados exitosamente"
-            else
-              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
-              exit $APPLY_EXIT_CODE
-            fi
+            echo "✅ Aplicación completada"
           else
-            echo "ℹ️ No hay cambios que aplicar - verificando si los recursos ya existen..."
-            # Verificar si los recursos ya existen en el estado
-            if terraform state list 2>/dev/null | grep -q "module.aks"; then
-              echo "✅ Recursos encontrados en el estado - la infraestructura ya está desplegada"
-            else
-              echo "⚠️ No hay plan file y no hay recursos en el estado"
-              echo "📋 Estado actual:"
-              terraform state list 2>/dev/null || echo "Estado vacío o no existe"
-              echo "❌ Error: No se puede continuar sin recursos desplegados"
-              exit 1
-            fi
+            echo "ℹ️ No hay plan file - saltando apply (no hay cambios)"
           fi
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Verify State Saved to Backend
-        run: |
-          echo "🔍 Verificando que el estado se guardó en el backend remoto..."
-          echo "📋 Listando recursos en el estado:"
-          terraform state list
-          echo ""
-          echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/dev/terraform.tfstate"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
 
       - name: Terraform Output
         id: terraform_output
@@ -548,19 +358,17 @@ jobs:
       - name: Parse Terraform Outputs
         id: parse_outputs
         run: |
-          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
-          CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
+          RESOURCE_GROUP=$(jq -r '.resource_group_name.value // empty' terraform_output.json)
+          CLUSTER_NAME=$(jq -r '.cluster_name.value // empty' terraform_output.json)
           
-          if [ "$RESOURCE_GROUP" = "null" ] || [ -z "$RESOURCE_GROUP" ]; then
-            echo "❌ Error: No se pudo obtener el Resource Group del output de Terraform"
-            echo "📋 Output completo:"
+          if [ -z "$RESOURCE_GROUP" ] || [ "$RESOURCE_GROUP" = "null" ]; then
+            echo "❌ Error: resource_group_name no encontrado en outputs"
             cat terraform_output.json
             exit 1
           fi
           
-          if [ "$CLUSTER_NAME" = "null" ] || [ -z "$CLUSTER_NAME" ]; then
-            echo "❌ Error: No se pudo obtener el Cluster Name del output de Terraform"
-            echo "📋 Output completo:"
+          if [ -z "$CLUSTER_NAME" ] || [ "$CLUSTER_NAME" = "null" ]; then
+            echo "❌ Error: cluster_name no encontrado en outputs"
             cat terraform_output.json
             exit 1
           fi
@@ -570,13 +378,10 @@ jobs:
           echo "Resource Group: $RESOURCE_GROUP"
           echo "Cluster Name: $CLUSTER_NAME"
           
-          # Verificar que el Resource Group existe en Azure
-          echo "🔍 Verificando que el Resource Group existe en Azure..."
           if az group show --name "$RESOURCE_GROUP" --query id -o tsv 2>/dev/null | grep -q .; then
             echo "✅ Resource Group encontrado en Azure"
           else
             echo "❌ Error: Resource Group '$RESOURCE_GROUP' no existe en Azure"
-            echo "⚠️ Los recursos no se desplegaron correctamente"
             exit 1
           fi
         env:
@@ -616,472 +421,12 @@ jobs:
           echo "✅ ConfigMap creado exitosamente"
         continue-on-error: true
 
-  terraform-apply-stage:
-    name: Deploy Stage
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'stage')
-    environment:
-      name: stage
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Validate Secrets
+      - name: Deployment Summary
         run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-
-      - name: Terraform Init
-        id: init
-        run: |
-          echo "🔧 Inicializando Terraform con backend remoto..."
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=stage/terraform.tfstate" \
-            -reconfigure
-          echo "✅ Terraform inicializado"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Verify Backend Configuration
-        run: |
-          echo "🔍 Verificando configuración del backend..."
-          if [ -f .terraform/terraform.tfstate ]; then
-            echo "✅ Backend configurado correctamente"
-            echo "📋 Información del backend:"
-            cat .terraform/terraform.tfstate | grep -A 10 "backend" || echo "Backend configurado (detalles en logs de init)"
-          else
-            echo "⚠️ No se encontró archivo de estado del backend"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Check State
-        run: |
-          if terraform state list 2>/dev/null | grep -q .; then
-            echo "✅ Estado encontrado con recursos existentes"
-            terraform state list
-          else
-            echo "ℹ️ Estado vacío o no existe (primera ejecución)"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az login --service-principal \
-            -u "$ARM_CLIENT_ID" \
-            -p "$ARM_CLIENT_SECRET" \
-            --tenant "$ARM_TENANT_ID" \
-            --output none
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Terraform Plan
-        id: plan
-        run: |
-          terraform plan -var-file=environments/stage/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
-          if [ "$PLAN_EXIT_CODE" = "1" ]; then
-            if grep -q "already exists" plan_output.txt; then
-              echo "⚠️ Detectados recursos existentes que no están en el estado"
-              echo "🔄 Intentando importar recursos existentes..."
-              
-              # Importar Resource Group si existe
-              RG_NAME="ecommerce-rg-stage"
-              if az group show --name "$RG_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
-                RG_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME"
-                echo "Importando Resource Group: $RG_NAME"
-                terraform import module.aks.azurerm_resource_group.main "$RG_ID" 2>&1 || echo "Resource Group ya en estado o error al importar"
-              fi
-              
-              echo "🔄 Re-ejecutando plan después de importar..."
-              terraform plan -var-file=environments/stage/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
-              if [ "$PLAN_EXIT_CODE" = "1" ] && grep -q "already exists" plan_output.txt; then
-                echo "ℹ️ Algunos recursos aún existen pero no se pueden importar automáticamente"
-                echo "✅ Continuando sin cambios (los recursos ya están desplegados)"
-                rm -f tfplan
-                PLAN_EXIT_CODE=0
-              fi
-            else
-              echo "❌ Error en el plan que no es por recursos existentes"
-              cat plan_output.txt
-              exit 1
-            fi
-          elif [ "$PLAN_EXIT_CODE" = "2" ]; then
-            echo "✅ Plan exitoso - hay cambios que aplicar"
-          else
-            echo "✅ Plan exitoso - no hay cambios (la infraestructura está actualizada)"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Verify Plan File
-        run: |
-          if [ ! -f tfplan ]; then
-            echo "ℹ️ No hay cambios que aplicar - la infraestructura ya está desplegada y actualizada"
-            echo "✅ Saltando apply (no se requiere acción)"
-            exit 0
-          fi
-          echo "✅ Plan file creado - hay cambios que aplicar"
-
-      - name: Terraform Apply
-        id: apply
-        run: |
-          if [ -f tfplan ]; then
-            echo "🚀 Aplicando cambios de Terraform..."
-            terraform apply -auto-approve tfplan
-            APPLY_EXIT_CODE=$?
-            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
-              echo "✅ Cambios aplicados exitosamente"
-            else
-              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
-              exit $APPLY_EXIT_CODE
-            fi
-          else
-            echo "ℹ️ No hay cambios que aplicar - saltando apply"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Verify State Saved to Backend
-        run: |
-          echo "🔍 Verificando que el estado se guardó en el backend remoto..."
-          echo "📋 Listando recursos en el estado:"
-          terraform state list
-          echo ""
-          echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/stage/terraform.tfstate"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Terraform Output
-        id: terraform_output
-        run: |
-          terraform output -json > terraform_output.json
-          cat terraform_output.json
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Parse Terraform Outputs
-        id: parse_outputs
-        run: |
-          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
-          CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
-          echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
-          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
-          echo "Resource Group: $RESOURCE_GROUP"
-          echo "Cluster Name: $CLUSTER_NAME"
-
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
-
-      - name: Get AKS Credentials
-        run: |
-          az aks get-credentials \
-            --resource-group "${{ steps.parse_outputs.outputs.resource_group }}" \
-            --name "${{ steps.parse_outputs.outputs.cluster_name }}" \
-            --overwrite-existing
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Create Spring ConfigMap in Kubernetes
-        run: |
-          echo "📦 Creando ConfigMap con variables de entorno para Spring Boot..."
-          kubectl create configmap spring-env-config \
-            --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
-            --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
-            --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
-            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_URI="https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server" \
-            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL="main" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          echo "✅ ConfigMap creado exitosamente"
-        continue-on-error: true
-
-  terraform-apply-prod:
-    name: Deploy Prod
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
-    environment:
-      name: prod
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: Validate Secrets
-        run: |
-          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then
-            echo "❌ Error: AZURE_STATE_RESOURCE_GROUP secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then
-            echo "❌ Error: AZURE_STATE_STORAGE_ACCOUNT secret is missing"
-            exit 1
-          fi
-          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then
-            echo "❌ Error: AZURE_STATE_CONTAINER secret is missing"
-            exit 1
-          fi
-          echo "✅ All required secrets are configured"
-
-      - name: Terraform Init
-        id: init
-        run: |
-          echo "🔧 Inicializando Terraform con backend remoto..."
-          terraform init \
-            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
-            -backend-config="key=prod/terraform.tfstate" \
-            -reconfigure
-          echo "✅ Terraform inicializado"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Verify Backend Configuration
-        run: |
-          echo "🔍 Verificando configuración del backend..."
-          if [ -f .terraform/terraform.tfstate ]; then
-            echo "✅ Backend configurado correctamente"
-            echo "📋 Información del backend:"
-            cat .terraform/terraform.tfstate | grep -A 10 "backend" || echo "Backend configurado (detalles en logs de init)"
-          else
-            echo "⚠️ No se encontró archivo de estado del backend"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Check State
-        run: |
-          if terraform state list 2>/dev/null | grep -q .; then
-            echo "✅ Estado encontrado con recursos existentes"
-            terraform state list
-          else
-            echo "ℹ️ Estado vacío o no existe (primera ejecución)"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Setup Azure CLI
-        run: |
-          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-          az login --service-principal \
-            -u "$ARM_CLIENT_ID" \
-            -p "$ARM_CLIENT_SECRET" \
-            --tenant "$ARM_TENANT_ID" \
-            --output none
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Terraform Plan
-        id: plan
-        run: |
-          terraform plan -var-file=environments/prod/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
-          if [ "$PLAN_EXIT_CODE" = "1" ]; then
-            if grep -q "already exists" plan_output.txt; then
-              echo "⚠️ Detectados recursos existentes que no están en el estado"
-              echo "🔄 Intentando importar recursos existentes..."
-              
-              # Importar Resource Group si existe
-              RG_NAME="ecommerce-rg-prod"
-              if az group show --name "$RG_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
-                RG_ID="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/$RG_NAME"
-                echo "Importando Resource Group: $RG_NAME"
-                terraform import module.aks.azurerm_resource_group.main "$RG_ID" 2>&1 || echo "Resource Group ya en estado o error al importar"
-              fi
-              
-              echo "🔄 Re-ejecutando plan después de importar..."
-              terraform plan -var-file=environments/prod/terraform.tfvars -out=tfplan -detailed-exitcode 2>&1 | tee plan_output.txt || PLAN_EXIT_CODE=$?
-              if [ "$PLAN_EXIT_CODE" = "1" ] && grep -q "already exists" plan_output.txt; then
-                echo "ℹ️ Algunos recursos aún existen pero no se pueden importar automáticamente"
-                echo "✅ Continuando sin cambios (los recursos ya están desplegados)"
-                rm -f tfplan
-                PLAN_EXIT_CODE=0
-              fi
-            else
-              echo "❌ Error en el plan que no es por recursos existentes"
-              cat plan_output.txt
-              exit 1
-            fi
-          elif [ "$PLAN_EXIT_CODE" = "2" ]; then
-            echo "✅ Plan exitoso - hay cambios que aplicar"
-          else
-            echo "✅ Plan exitoso - no hay cambios (la infraestructura está actualizada)"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Verify Plan File
-        run: |
-          if [ ! -f tfplan ]; then
-            echo "ℹ️ No hay cambios que aplicar - la infraestructura ya está desplegada y actualizada"
-            echo "✅ Saltando apply (no se requiere acción)"
-            exit 0
-          fi
-          echo "✅ Plan file creado - hay cambios que aplicar"
-
-      - name: Terraform Apply
-        id: apply
-        run: |
-          if [ -f tfplan ]; then
-            echo "🚀 Aplicando cambios de Terraform..."
-            terraform apply -auto-approve tfplan
-            APPLY_EXIT_CODE=$?
-            if [ "$APPLY_EXIT_CODE" -eq 0 ]; then
-              echo "✅ Cambios aplicados exitosamente"
-            else
-              echo "❌ Error al aplicar cambios (código: $APPLY_EXIT_CODE)"
-              exit $APPLY_EXIT_CODE
-            fi
-          else
-            echo "ℹ️ No hay cambios que aplicar - saltando apply"
-          fi
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Verify State Saved to Backend
-        run: |
-          echo "🔍 Verificando que el estado se guardó en el backend remoto..."
-          echo "📋 Listando recursos en el estado:"
-          terraform state list
-          echo ""
-          echo "✅ Estado verificado - se guardó en Azure Storage: ${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}/${{ secrets.AZURE_STATE_CONTAINER }}/prod/terraform.tfstate"
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-        continue-on-error: true
-
-      - name: Terraform Output
-        id: terraform_output
-        run: |
-          terraform output -json > terraform_output.json
-          cat terraform_output.json
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Parse Terraform Outputs
-        id: parse_outputs
-        run: |
-          RESOURCE_GROUP=$(jq -r '.resource_group_name.value' terraform_output.json)
-          CLUSTER_NAME=$(jq -r '.cluster_name.value' terraform_output.json)
-          echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
-          echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
-          echo "Resource Group: $RESOURCE_GROUP"
-          echo "Cluster Name: $CLUSTER_NAME"
-
-      - name: Install kubectl
-        run: |
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
-          sudo mv kubectl /usr/local/bin/
-
-      - name: Get AKS Credentials
-        run: |
-          az aks get-credentials \
-            --resource-group "${{ steps.parse_outputs.outputs.resource_group }}" \
-            --name "${{ steps.parse_outputs.outputs.cluster_name }}" \
-            --overwrite-existing
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-
-      - name: Create Spring ConfigMap in Kubernetes
-        run: |
-          echo "📦 Creando ConfigMap con variables de entorno para Spring Boot..."
-          kubectl create configmap spring-env-config \
-            --from-literal=SPRING_ZIPKIN_BASE_URL="http://zipkin:9411" \
-            --from-literal=SPRING_CONFIG_IMPORT="http://cloud-config-service:9296" \
-            --from-literal=EUREKA_CLIENT_SERVICEURL_DEFAULTZONE="http://service-discovery:8761/eureka" \
-            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_URI="https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server" \
-            --from-literal=SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL="main" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          echo "✅ ConfigMap creado exitosamente"
-        continue-on-error: true
+          echo "## ✅ Infraestructura ${{ matrix.environment }} Desplegada" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Entorno:** ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Resource Group:** ${{ steps.parse_outputs.outputs.resource_group }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster Name:** ${{ steps.parse_outputs.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
