@@ -102,6 +102,89 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Import Existing Key Vault Resources (if exist)
+        run: |
+          cd environments/global
+          echo "🔍 Verificando si el Key Vault y Resource Group ya existen..."
+          
+          # Calcular el nombre del Key Vault (mismo cálculo que en el módulo)
+          RESOURCE_PREFIX_CLEAN=$(echo "${{ secrets.RESOURCE_PREFIX }}" | tr -d '-')
+          HASH=$(echo -n "${{ secrets.RESOURCE_PREFIX }}global" | md5sum | cut -c1-4)
+          KEY_VAULT_NAME="${RESOURCE_PREFIX_CLEAN}kv${HASH}"
+          RESOURCE_GROUP_NAME="${{ secrets.RESOURCE_PREFIX }}-rg-global"
+          
+          # Verificar si el Resource Group existe
+          if az group show --name "$RESOURCE_GROUP_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+            echo "✅ Resource Group encontrado: $RESOURCE_GROUP_NAME"
+            
+            # Importar Resource Group si no está en el estado
+            if ! terraform state show module.keyvault.azurerm_resource_group.global >/dev/null 2>&1; then
+              echo "📥 Importando Resource Group al estado de Terraform..."
+              RESOURCE_GROUP_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${RESOURCE_GROUP_NAME}"
+              terraform import \
+                -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+                -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+                -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                -var="location=${{ secrets.AZURE_LOCATION }}" \
+                -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
+                -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
+                -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
+                -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
+                -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+                -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+                -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
+                -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
+                -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                module.keyvault.azurerm_resource_group.global \
+                "$RESOURCE_GROUP_ID" || echo "⚠️ No se pudo importar el Resource Group"
+            else
+              echo "ℹ️ El Resource Group ya está en el estado de Terraform"
+            fi
+            
+            # Verificar si el Key Vault existe
+            if az keyvault show --name "$KEY_VAULT_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query id -o tsv 2>/dev/null | grep -q .; then
+              echo "✅ Key Vault encontrado: $KEY_VAULT_NAME"
+              
+              # Importar Key Vault si no está en el estado
+              if ! terraform state show module.keyvault.azurerm_key_vault.global >/dev/null 2>&1; then
+                echo "📥 Importando Key Vault al estado de Terraform..."
+                KEY_VAULT_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.KeyVault/vaults/${KEY_VAULT_NAME}"
+                terraform import \
+                  -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+                  -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+                  -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                  -var="location=${{ secrets.AZURE_LOCATION }}" \
+                  -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
+                  -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
+                  -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
+                  -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
+                  -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+                  -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                  -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+                  -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
+                  -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                  -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
+                  -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                  module.keyvault.azurerm_key_vault.global \
+                  "$KEY_VAULT_ID" || echo "⚠️ No se pudo importar el Key Vault"
+              else
+                echo "ℹ️ El Key Vault ya está en el estado de Terraform"
+              fi
+            else
+              echo "ℹ️ El Key Vault no existe aún (se creará en el plan)"
+            fi
+          else
+            echo "ℹ️ El Resource Group no existe aún (se creará en el plan)"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Import Existing Access Policy (if exists)
         run: |
           cd environments/global
