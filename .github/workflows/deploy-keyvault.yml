@@ -309,6 +309,75 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         continue-on-error: true
 
+      - name: Import Existing AZURE_CREDENTIAL Access Policy (if exists)
+        run: |
+          cd environments/global
+          
+          # Solo proceder si AZURE_CREDENTIAL está configurado y tiene Object ID
+          if [ -z "${{ steps.azure_credential_object_id.outputs.object_id }}" ]; then
+            echo "ℹ️ AZURE_CREDENTIAL no está configurado o no se pudo obtener el Object ID"
+            exit 0
+          fi
+          
+          echo "🔍 Verificando si la política de acceso de AZURE_CREDENTIAL ya existe..."
+          
+          # Calcular el nombre del Key Vault (mismo cálculo que en el módulo)
+          RESOURCE_PREFIX_CLEAN=$(echo "${{ secrets.RESOURCE_PREFIX }}" | tr -d '-')
+          HASH=$(echo -n "${{ secrets.RESOURCE_PREFIX }}global" | md5sum | cut -c1-4)
+          KEY_VAULT_NAME="${RESOURCE_PREFIX_CLEAN}kv${HASH}"
+          
+          KEY_VAULT_ID="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.RESOURCE_PREFIX }}-rg-global/providers/Microsoft.KeyVault/vaults/${KEY_VAULT_NAME}"
+          AZURE_CREDENTIAL_OBJECT_ID="${{ steps.azure_credential_object_id.outputs.object_id }}"
+          ACCESS_POLICY_ID="${KEY_VAULT_ID}/objectId/${AZURE_CREDENTIAL_OBJECT_ID}"
+          
+          echo "🔍 Object ID de AZURE_CREDENTIAL: $AZURE_CREDENTIAL_OBJECT_ID"
+          
+          # Verificar si el Key Vault existe
+          if az keyvault show --name "$KEY_VAULT_NAME" --resource-group "${{ secrets.RESOURCE_PREFIX }}-rg-global" --query id -o tsv 2>/dev/null | grep -q .; then
+            echo "✅ Key Vault encontrado: $KEY_VAULT_NAME"
+            
+            # Verificar si la política de acceso existe
+            if az keyvault show --name "$KEY_VAULT_NAME" --query "properties.accessPolicies[?objectId=='${AZURE_CREDENTIAL_OBJECT_ID}']" -o json 2>/dev/null | grep -q "objectId"; then
+              echo "✅ Política de acceso encontrada para AZURE_CREDENTIAL"
+              
+              # Intentar importar al estado de Terraform
+              if ! terraform state show module.keyvault.azurerm_key_vault_access_policy.azure_credential[0] >/dev/null 2>&1; then
+                echo "📥 Importando política de acceso de AZURE_CREDENTIAL al estado de Terraform..."
+                terraform import \
+                  -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+                  -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+                  -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                  -var="location=${{ secrets.AZURE_LOCATION }}" \
+                  -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
+                  -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
+                  -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
+                  -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
+                  -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+                  -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                  -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+                  -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
+                  -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+                  -var="azure_credential_object_id=${AZURE_CREDENTIAL_OBJECT_ID}" \
+                  -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
+                  -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                  module.keyvault.azurerm_key_vault_access_policy.azure_credential[0] \
+                  "$ACCESS_POLICY_ID" || echo "⚠️ No se pudo importar (puede que ya esté en el estado o necesite actualización)"
+              else
+                echo "ℹ️ La política de acceso de AZURE_CREDENTIAL ya está en el estado de Terraform"
+              fi
+            else
+              echo "ℹ️ La política de acceso de AZURE_CREDENTIAL no existe aún (se creará en el plan)"
+            fi
+          else
+            echo "ℹ️ El Key Vault no existe aún (se creará en el plan)"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Plan
         run: |
           cd environments/global
