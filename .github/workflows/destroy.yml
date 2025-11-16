@@ -166,15 +166,15 @@ jobs:
           echo "🔍 Buscando resource groups MC_* relacionados..."
           MC_GROUPS=$(az group list --query "[?starts_with(name, 'MC_')].name" -o tsv 2>/dev/null || echo "")
           
-          RESOURCE_GROUP_UPPER=$(echo "$RESOURCE_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-          CLUSTER_NAME_UPPER=$(echo "$CLUSTER_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+          RESOURCE_GROUP_UPPER=$(echo "$RESOURCE_GROUP" | tr '[:lower:]' '[:upper:]')
+          CLUSTER_NAME_UPPER=$(echo "$CLUSTER_NAME" | tr '[:lower:]' '[:upper:]')
           
           FOUND_ANY=false
           if [ -n "$MC_GROUPS" ]; then
             for MC_GROUP in $MC_GROUPS; do
               # Verificar si el resource group contiene recursos relacionados con este cluster
-              # Buscar por nombre del resource group o cluster (case insensitive)
-              MC_GROUP_UPPER=$(echo "$MC_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+              # Buscar por nombre del resource group o cluster (case insensitive, sin reemplazar guiones)
+              MC_GROUP_UPPER=$(echo "$MC_GROUP" | tr '[:lower:]' '[:upper:]')
               
               if echo "$MC_GROUP_UPPER" | grep -qE "(${RESOURCE_GROUP_UPPER}|${CLUSTER_NAME_UPPER})"; then
                 echo "⚠️ Resource Group de nodos encontrado: $MC_GROUP"
@@ -231,29 +231,14 @@ jobs:
               fi
             elif grep -q "InUseSubnetCannotBeDeleted" destroy_output.txt; then
               echo "⚠️ Subnet aún en uso, limpiando recursos de nodos AKS..."
-              RESOURCE_GROUP="${{ secrets.RESOURCE_PREFIX }}-rg-${{ matrix.environment }}"
-              CLUSTER_NAME="${{ secrets.CLUSTER_NAME_BASE }}-${{ matrix.environment }}"
               
-              # Buscar y eliminar todos los resource groups MC_* relacionados
-              echo "🔍 Buscando resource groups MC_* relacionados..."
-              MC_GROUPS=$(az group list --query "[?starts_with(name, 'MC_')].name" -o tsv 2>/dev/null || echo "")
+              # Extraer el nombre del resource group MC_* directamente del mensaje de error
+              MC_GROUP_FROM_ERROR=$(grep -oP 'resourceGroups/\K[^/]+' destroy_output.txt | grep "^MC_" | head -1 || echo "")
               
-              RESOURCE_GROUP_UPPER=$(echo "$RESOURCE_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-              CLUSTER_NAME_UPPER=$(echo "$CLUSTER_NAME" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-              
-              FOUND_MC_GROUP=false
-              if [ -n "$MC_GROUPS" ]; then
-                for MC_GROUP in $MC_GROUPS; do
-                  MC_GROUP_UPPER=$(echo "$MC_GROUP" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-                  if echo "$MC_GROUP_UPPER" | grep -qE "(${RESOURCE_GROUP_UPPER}|${CLUSTER_NAME_UPPER})"; then
-                    echo "🗑️ Eliminando resource group de nodos: $MC_GROUP"
-                    az group delete --name "$MC_GROUP" --yes --no-wait
-                    FOUND_MC_GROUP=true
-                  fi
-                done
-              fi
-              
-              if [ "$FOUND_MC_GROUP" = true ]; then
+              if [ -n "$MC_GROUP_FROM_ERROR" ]; then
+                echo "✅ Resource Group MC_* encontrado en el error: $MC_GROUP_FROM_ERROR"
+                echo "🗑️ Eliminando resource group de nodos: $MC_GROUP_FROM_ERROR"
+                az group delete --name "$MC_GROUP_FROM_ERROR" --yes --no-wait || echo "⚠️ Error al eliminar $MC_GROUP_FROM_ERROR"
                 echo "⏳ Esperando 90 segundos para que Azure complete la eliminación..."
                 sleep 90
                 echo "🔄 Reintentando destrucción..."
@@ -263,10 +248,45 @@ jobs:
                   -var="location=${{ secrets.AZURE_LOCATION }}" \
                   -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
               else
-                echo "❌ No se pudo encontrar el resource group MC_* para limpiar"
-                echo "💡 Intenta eliminar manualmente el resource group MC_* desde Azure Portal"
-                cat destroy_output.txt
-                exit 1
+                # Fallback: buscar manualmente todos los MC_*
+                echo "🔍 No se pudo extraer del error, buscando todos los resource groups MC_*..."
+                RESOURCE_GROUP="${{ secrets.RESOURCE_PREFIX }}-rg-${{ matrix.environment }}"
+                CLUSTER_NAME="${{ secrets.CLUSTER_NAME_BASE }}-${{ matrix.environment }}"
+                
+                MC_GROUPS=$(az group list --query "[?starts_with(name, 'MC_')].name" -o tsv 2>/dev/null || echo "")
+                
+                RESOURCE_GROUP_UPPER=$(echo "$RESOURCE_GROUP" | tr '[:lower:]' '[:upper:]')
+                CLUSTER_NAME_UPPER=$(echo "$CLUSTER_NAME" | tr '[:lower:]' '[:upper:]')
+                
+                FOUND_MC_GROUP=false
+                if [ -n "$MC_GROUPS" ]; then
+                  for MC_GROUP in $MC_GROUPS; do
+                    MC_GROUP_UPPER=$(echo "$MC_GROUP" | tr '[:lower:]' '[:upper:]')
+                    if echo "$MC_GROUP_UPPER" | grep -qE "(${RESOURCE_GROUP_UPPER}|${CLUSTER_NAME_UPPER})"; then
+                      echo "🗑️ Eliminando resource group de nodos: $MC_GROUP"
+                      az group delete --name "$MC_GROUP" --yes --no-wait
+                      FOUND_MC_GROUP=true
+                    fi
+                  done
+                fi
+                
+                if [ "$FOUND_MC_GROUP" = true ]; then
+                  echo "⏳ Esperando 90 segundos para que Azure complete la eliminación..."
+                  sleep 90
+                  echo "🔄 Reintentando destrucción..."
+                  terraform destroy -auto-approve \
+                    -var-file=environments/${{ matrix.environment }}/terraform.tfvars \
+                    -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+                    -var="location=${{ secrets.AZURE_LOCATION }}" \
+                    -var="cluster_name=${{ secrets.CLUSTER_NAME_BASE }}"
+                else
+                  echo "❌ No se pudo encontrar el resource group MC_* para limpiar"
+                  echo "💡 Intenta eliminar manualmente el resource group MC_* desde Azure Portal"
+                  echo "🔍 Resource groups MC_* encontrados:"
+                  echo "$MC_GROUPS" || echo "Ninguno"
+                  cat destroy_output.txt
+                  exit 1
+                fi
               fi
             else
               echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
