@@ -91,24 +91,30 @@ jobs:
         id: azure_credential_object_id
         run: |
           if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
-            echo "🔍 Extrayendo client_id de AZURE_CREDENTIAL..."
+            echo "🔍 Extrayendo clientId de AZURE_CREDENTIAL..."
             CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
+            
+            # Intentar extraer clientId (con diferentes variantes)
             CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
             
-            if [ -n "$CLIENT_ID" ] && [ "$CLIENT_ID" != "null" ] && [ "$CLIENT_ID" != "" ]; then
-              echo "✅ Client ID encontrado: $CLIENT_ID"
-              echo "🔍 Obteniendo Object ID del Service Principal..."
-              CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
-              
-              if [ -n "$CREDENTIAL_OBJECT_ID" ]; then
-                echo "✅ Object ID encontrado: $CREDENTIAL_OBJECT_ID"
-                echo "object_id=$CREDENTIAL_OBJECT_ID" >> $GITHUB_OUTPUT
-              else
-                echo "⚠️ No se pudo obtener el Object ID del Service Principal"
-                echo "object_id=" >> $GITHUB_OUTPUT
-              fi
+            if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "null" ] || [ "$CLIENT_ID" = "" ]; then
+              echo "⚠️ No se pudo extraer clientId del JSON de AZURE_CREDENTIAL"
+              echo "📋 JSON recibido (primeros 100 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 100)"
+              echo "object_id=" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            echo "✅ Client ID encontrado: $CLIENT_ID"
+            echo "🔍 Obteniendo Object ID del Service Principal..."
+            CREDENTIAL_OBJECT_ID=$(az ad sp show --id "$CLIENT_ID" --query id -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$CREDENTIAL_OBJECT_ID" ] && [ "$CREDENTIAL_OBJECT_ID" != "" ]; then
+              echo "✅ Object ID encontrado: $CREDENTIAL_OBJECT_ID"
+              echo "object_id=$CREDENTIAL_OBJECT_ID" >> $GITHUB_OUTPUT
             else
-              echo "⚠️ No se pudo extraer client_id del JSON de AZURE_CREDENTIAL"
+              echo "⚠️ No se pudo obtener el Object ID del Service Principal con clientId: $CLIENT_ID"
+              echo "💡 Verificando si el Service Principal existe..."
+              az ad sp show --id "$CLIENT_ID" --query "{id:id,appId:appId,displayName:displayName}" -o json 2>&1 || echo "❌ Service Principal no encontrado"
               echo "object_id=" >> $GITHUB_OUTPUT
             fi
           else
