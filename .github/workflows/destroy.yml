@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Entorno a destruir (¡CUIDADO!)'
+        description: '¿Qué quieres destruir? (¡CUIDADO!)'
         required: true
         type: choice
         options:
           - dev
           - stage
           - prod
+          - keyvault
           - all
       confirm_destroy:
         description: 'Escribe "DESTROY" para confirmar'
@@ -35,10 +36,8 @@ jobs:
           - environment: prod
             resource_group_secret: AZURE_RESOURCE_GROUP_PROD
     if: |
-      github.event.inputs.environment == 'all' ||
-      github.event.inputs.environment == 'dev' ||
-      github.event.inputs.environment == 'stage' ||
-      github.event.inputs.environment == 'prod'
+      (github.event.inputs.environment == 'all' || github.event.inputs.environment == 'dev' || github.event.inputs.environment == 'stage' || github.event.inputs.environment == 'prod') &&
+      github.event.inputs.environment != 'keyvault'
     environment:
       name: ${{ matrix.environment }}-destroy
     
@@ -151,5 +150,154 @@ jobs:
           echo "## 🗑️ Infraestructura ${{ matrix.environment }} Destruida" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Entorno:** ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
+
+  terraform-destroy-keyvault:
+    name: Destroy Key Vault
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.environment == 'keyvault' || github.event.inputs.environment == 'all'
+    environment:
+      name: global-destroy
+    
+    steps:
+      - name: Validate Destroy Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Debes escribir 'DESTROY' para confirmar la destrucción"
+            exit 1
+          fi
+          echo "✅ Confirmación de destrucción recibida para Key Vault"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Validate Secrets
+        run: |
+          MISSING_SECRETS=()
+          
+          if [ -z "${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" ]; then MISSING_SECRETS+=("AZURE_STATE_RESOURCE_GROUP"); fi
+          if [ -z "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" ]; then MISSING_SECRETS+=("AZURE_STATE_STORAGE_ACCOUNT"); fi
+          if [ -z "${{ secrets.AZURE_STATE_CONTAINER }}" ]; then MISSING_SECRETS+=("AZURE_STATE_CONTAINER"); fi
+          if [ -z "${{ secrets.AZURE_CLIENT_ID }}" ]; then MISSING_SECRETS+=("AZURE_CLIENT_ID"); fi
+          if [ -z "${{ secrets.AZURE_CLIENT_SECRET }}" ]; then MISSING_SECRETS+=("AZURE_CLIENT_SECRET"); fi
+          if [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]; then MISSING_SECRETS+=("AZURE_SUBSCRIPTION_ID"); fi
+          if [ -z "${{ secrets.AZURE_TENANT_ID }}" ]; then MISSING_SECRETS+=("AZURE_TENANT_ID"); fi
+          if [ -z "${{ secrets.RESOURCE_PREFIX }}" ]; then MISSING_SECRETS+=("RESOURCE_PREFIX"); fi
+          if [ -z "${{ secrets.AZURE_LOCATION }}" ]; then MISSING_SECRETS+=("AZURE_LOCATION"); fi
+          
+          if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
+            echo "❌ Error: Missing required secrets:"
+            printf '  - %s\n' "${MISSING_SECRETS[@]}"
+            exit 1
+          fi
+          
+          echo "✅ All required secrets are configured"
+
+      - name: Setup Azure CLI
+        run: |
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          az login --service-principal \
+            -u "$ARM_CLIENT_ID" \
+            -p "$ARM_CLIENT_SECRET" \
+            --tenant "$ARM_TENANT_ID" \
+            --output none
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Get Service Principal Object ID
+        id: sp_object_id
+        run: |
+          SP_OBJECT_ID=$(az ad sp show --id "$ARM_CLIENT_ID" --query id -o tsv)
+          echo "object_id=$SP_OBJECT_ID" >> $GITHUB_OUTPUT
+          echo "Service Principal Object ID: $SP_OBJECT_ID"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Terraform Init
+        run: |
+          cd environments/global
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.AZURE_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.AZURE_STATE_CONTAINER }}" \
+            -backend-config="key=global/terraform.tfstate" \
+            -reconfigure
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Check State
+        run: |
+          cd environments/global
+          if terraform state list 2>/dev/null | grep -q .; then
+            echo "✅ Estado encontrado con recursos:"
+            terraform state list
+          else
+            echo "⚠️ Estado vacío o no existe - no hay nada que destruir"
+            echo "✅ Saltando destroy (no hay recursos en el estado)"
+            exit 0
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
+      - name: Terraform Destroy
+        id: destroy
+        run: |
+          cd environments/global
+          echo "🗑️ Iniciando destrucción de Key Vault Global..."
+          terraform destroy -auto-approve \
+            -var="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -var="service_principal_object_id=${{ steps.sp_object_id.outputs.object_id }}" \
+            -var="resource_prefix=${{ secrets.RESOURCE_PREFIX }}" \
+            -var="location=${{ secrets.AZURE_LOCATION }}" \
+            -var="azure_resource_group_dev=${{ secrets.AZURE_RESOURCE_GROUP_DEV }}" \
+            -var="aks_cluster_name_dev=${{ secrets.AKS_CLUSTER_NAME_DEV }}" \
+            -var="azure_resource_group_stage=${{ secrets.AZURE_RESOURCE_GROUP_STAGE }}" \
+            -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
+            -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
+            -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+            -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+            -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
+            -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
+            -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
+            -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}"
+          DESTROY_EXIT_CODE=$?
+          if [ "$DESTROY_EXIT_CODE" -eq 0 ]; then
+            echo "✅ Destrucción completada exitosamente"
+          else
+            echo "❌ Error durante la destrucción (código: $DESTROY_EXIT_CODE)"
+            exit $DESTROY_EXIT_CODE
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+      - name: Destroy Summary
+        run: |
+          echo "## 🗑️ Key Vault Global Destruido" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Recurso:** Key Vault Global" >> $GITHUB_STEP_SUMMARY
           echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY

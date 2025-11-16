@@ -142,6 +142,48 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Get Key Vault Name
+        id: kv_name
+        run: |
+          cd environments/global
+          KEY_VAULT_NAME=$(terraform output -raw key_vault_name 2>/dev/null || echo "")
+          if [ -z "$KEY_VAULT_NAME" ]; then
+            echo "⚠️ No se pudo obtener el nombre del Key Vault desde outputs"
+            exit 0
+          fi
+          echo "key_vault_name=$KEY_VAULT_NAME" >> $GITHUB_OUTPUT
+          echo "Key Vault Name: $KEY_VAULT_NAME"
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
+      - name: List Key Vault Secrets
+        id: list_secrets
+        run: |
+          if [ -n "${{ steps.kv_name.outputs.key_vault_name }}" ]; then
+            echo "📋 Listando secrets creados en el Key Vault..."
+            SECRETS=$(az keyvault secret list --vault-name "${{ steps.kv_name.outputs.key_vault_name }}" --query "[].name" -o tsv 2>/dev/null || echo "")
+            if [ -n "$SECRETS" ]; then
+              echo "$SECRETS" | while read secret; do
+                echo "  - $secret"
+              done
+              echo "$SECRETS" > secrets_list.txt
+            else
+              echo "⚠️ No se encontraron secrets en el Key Vault"
+            fi
+          else
+            echo "⚠️ No se pudo obtener el nombre del Key Vault"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Deployment Summary
         run: |
           echo "## ✅ Key Vault Global Desplegado" >> $GITHUB_STEP_SUMMARY
@@ -149,4 +191,48 @@ jobs:
           echo "**Ejecutado por:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
           echo "**Fecha:** $(date)" >> $GITHUB_STEP_SUMMARY
           echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ steps.kv_name.outputs.key_vault_name }}" ]; then
+            echo "**Key Vault:** ${{ steps.kv_name.outputs.key_vault_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📋 Secrets Creados en el Key Vault:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -f secrets_list.txt ] && [ -s secrets_list.txt ]; then
+              while read secret; do
+                echo "- \`$secret\`" >> $GITHUB_STEP_SUMMARY
+              done < secrets_list.txt
+            else
+              echo "- AZURE-RESOURCE-GROUP-DEV" >> $GITHUB_STEP_SUMMARY
+              echo "- AKS-CLUSTER-NAME-DEV" >> $GITHUB_STEP_SUMMARY
+              echo "- AZURE-RESOURCE-GROUP-STAGE" >> $GITHUB_STEP_SUMMARY
+              echo "- AKS-CLUSTER-NAME-STAGE" >> $GITHUB_STEP_SUMMARY
+              echo "- AZURE-RESOURCE-GROUP-PROD" >> $GITHUB_STEP_SUMMARY
+              echo "- AKS-CLUSTER-NAME-PROD" >> $GITHUB_STEP_SUMMARY
+              echo "- DOCKERHUB-USERNAME" >> $GITHUB_STEP_SUMMARY
+              echo "- DOCKERHUB-TOKEN" >> $GITHUB_STEP_SUMMARY
+              echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-URI" >> $GITHUB_STEP_SUMMARY
+              echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-DEFAULT-LABEL" >> $GITHUB_STEP_SUMMARY
+              if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
+                echo "- AZURE-CREDENTIAL" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          else
+            echo "### 📋 Secrets Creados en el Key Vault:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- AZURE-RESOURCE-GROUP-DEV" >> $GITHUB_STEP_SUMMARY
+            echo "- AKS-CLUSTER-NAME-DEV" >> $GITHUB_STEP_SUMMARY
+            echo "- AZURE-RESOURCE-GROUP-STAGE" >> $GITHUB_STEP_SUMMARY
+            echo "- AKS-CLUSTER-NAME-STAGE" >> $GITHUB_STEP_SUMMARY
+            echo "- AZURE-RESOURCE-GROUP-PROD" >> $GITHUB_STEP_SUMMARY
+            echo "- AKS-CLUSTER-NAME-PROD" >> $GITHUB_STEP_SUMMARY
+            echo "- DOCKERHUB-USERNAME" >> $GITHUB_STEP_SUMMARY
+            echo "- DOCKERHUB-TOKEN" >> $GITHUB_STEP_SUMMARY
+            echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-URI" >> $GITHUB_STEP_SUMMARY
+            echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-DEFAULT-LABEL" >> $GITHUB_STEP_SUMMARY
+            if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
+              echo "- AZURE-CREDENTIAL" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
 
