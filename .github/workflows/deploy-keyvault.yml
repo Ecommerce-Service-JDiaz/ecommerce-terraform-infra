@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       force_redeploy:
-        description: 'Forzar redespliegue completo'
+        description: 'Forzar redespliegue completo (recrea todos los recursos incluso si no hay cambios)'
         required: false
         type: boolean
         default: false
