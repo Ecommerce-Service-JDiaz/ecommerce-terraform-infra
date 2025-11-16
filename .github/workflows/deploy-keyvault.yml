@@ -87,6 +87,33 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
+      - name: Ensure Storage Container Exists
+        run: |
+          echo "🔍 Verificando si el contenedor de almacenamiento existe..."
+          CONTAINER_EXISTS=$(az storage container exists \
+            --account-name "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+            --name "${{ secrets.AZURE_STATE_CONTAINER }}" \
+            --auth-mode login \
+            --query exists -o tsv 2>/dev/null || echo "false")
+          
+          if [ "$CONTAINER_EXISTS" = "false" ]; then
+            echo "📦 Contenedor no existe, creándolo..."
+            az storage container create \
+              --account-name "${{ secrets.AZURE_STATE_STORAGE_ACCOUNT }}" \
+              --name "${{ secrets.AZURE_STATE_CONTAINER }}" \
+              --auth-mode login \
+              --public-access off || echo "⚠️ Error al crear el contenedor (puede que ya exista)"
+            echo "✅ Contenedor creado o verificado"
+          else
+            echo "✅ El contenedor ya existe"
+          fi
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
       - name: Terraform Init
         run: |
           cd environments/global
