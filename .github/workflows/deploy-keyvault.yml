@@ -99,12 +99,51 @@ jobs:
           echo "🔍 Extrayendo clientId de AZURE_CREDENTIAL..."
           CREDENTIAL_JSON="${{ secrets.AZURE_CREDENTIAL }}"
           
+          # Validar que el JSON sea válido
+          JSON_VALID=$(echo "$CREDENTIAL_JSON" | jq empty 2>&1)
+          if [ $? -ne 0 ]; then
+            echo "⚠️ El JSON no es válido, intentando corregirlo..."
+            echo "📋 Error de validación: $JSON_VALID"
+            
+            # Intentar corregir: agregar comillas a las claves y valores
+            # Primero, intentar agregar comillas a las claves (clientId: -> "clientId":)
+            CREDENTIAL_JSON_FIXED=$(echo "$CREDENTIAL_JSON" | \
+              sed -E 's/^[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*:/"\1":/g' | \
+              sed -E 's/:[[:space:]]*([a-zA-Z0-9_-]+)[[:space:]]*([,}])/:"\1"\2/g' 2>/dev/null || echo "$CREDENTIAL_JSON")
+            
+            # Validar nuevamente
+            if echo "$CREDENTIAL_JSON_FIXED" | jq empty 2>/dev/null; then
+              echo "✅ JSON corregido exitosamente"
+              CREDENTIAL_JSON="$CREDENTIAL_JSON_FIXED"
+            else
+              echo "❌ ERROR: No se pudo parsear el JSON de AZURE_CREDENTIAL como JSON válido"
+              echo "📋 Contenido recibido (primeros 500 caracteres):"
+              echo "${{ secrets.AZURE_CREDENTIAL }}" | head -c 500
+              echo ""
+              echo ""
+              echo "💡 El JSON debe tener el formato válido:"
+              echo '{'
+              echo '  "clientId": "c4221b5f-c4f3-400b-9a05-b1804627fcba",'
+              echo '  "clientSecret": "...",'
+              echo '  "subscriptionId": "...",'
+              echo '  "tenantId": "..."'
+              echo '}'
+              echo ""
+              echo "💡 Asegúrate de que:"
+              echo "   1. Todas las claves estén entre comillas dobles: \"clientId\""
+              echo "   2. Todos los valores de string estén entre comillas dobles: \"valor\""
+              echo "   3. No haya comas al final de los objetos"
+              echo "   4. El formato sea JSON válido (puedes validarlo en https://jsonlint.com/)"
+              exit 1
+            fi
+          fi
+          
           # Intentar extraer clientId (con diferentes variantes)
           CLIENT_ID=$(echo "$CREDENTIAL_JSON" | jq -r '.clientId // .client_id // empty' 2>/dev/null || echo "")
           
           if [ -z "$CLIENT_ID" ] || [ "$CLIENT_ID" = "null" ] || [ "$CLIENT_ID" = "" ]; then
             echo "❌ ERROR: No se pudo extraer clientId del JSON de AZURE_CREDENTIAL"
-            echo "📋 JSON recibido (primeros 200 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 200)"
+            echo "📋 JSON parseado (primeros 200 caracteres): $(echo "$CREDENTIAL_JSON" | head -c 200)"
             echo "💡 Asegúrate de que el JSON contenga 'clientId' o 'client_id'"
             exit 1
           fi
