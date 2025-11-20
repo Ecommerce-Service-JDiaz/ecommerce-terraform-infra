@@ -262,6 +262,31 @@ resource "azurerm_key_vault_secret" "aks_cluster_name_prod" {
   depends_on = [azurerm_key_vault_access_policy.service_principal]
 }
 
+# Secrets de Kubernetes Namespaces
+resource "azurerm_key_vault_secret" "kubernetes_namespace_dev" {
+  name         = "KUBERNETES-NAMESPACE-DEV"
+  value        = var.kubernetes_namespace_dev
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "kubernetes_namespace_stage" {
+  name         = "KUBERNETES-NAMESPACE-STAGE"
+  value        = var.kubernetes_namespace_stage
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
+resource "azurerm_key_vault_secret" "kubernetes_namespace_prod" {
+  name         = "KUBERNETES-NAMESPACE-PROD"
+  value        = var.kubernetes_namespace_prod
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
 # Secrets de Docker Hub
 resource "azurerm_key_vault_secret" "dockerhub_username" {
   name         = "DOCKERHUB-USERNAME"

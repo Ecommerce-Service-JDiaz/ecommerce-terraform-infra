@@ -37,6 +37,10 @@ module "keyvault" {
   azure_resource_group_prod  = var.azure_resource_group_prod
   aks_cluster_name_prod      = var.aks_cluster_name_prod
 
+  kubernetes_namespace_dev   = var.kubernetes_namespace_dev
+  kubernetes_namespace_stage = var.kubernetes_namespace_stage
+  kubernetes_namespace_prod  = var.kubernetes_namespace_prod
+
   dockerhub_username = var.dockerhub_username
   dockerhub_token    = var.dockerhub_token
   azure_credential   = var.azure_credential

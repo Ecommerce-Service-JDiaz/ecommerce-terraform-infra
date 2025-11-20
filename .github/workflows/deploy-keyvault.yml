@@ -48,6 +48,9 @@ jobs:
           if [ -z "${{ secrets.AKS_CLUSTER_NAME_STAGE }}" ]; then MISSING_SECRETS+=("AKS_CLUSTER_NAME_STAGE"); fi
           if [ -z "${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" ]; then MISSING_SECRETS+=("AZURE_RESOURCE_GROUP_PROD"); fi
           if [ -z "${{ secrets.AKS_CLUSTER_NAME_PROD }}" ]; then MISSING_SECRETS+=("AKS_CLUSTER_NAME_PROD"); fi
+          if [ -z "${{ secrets.KUBERNETES_NAMESPACE_DEV }}" ]; then MISSING_SECRETS+=("KUBERNETES_NAMESPACE_DEV"); fi
+          if [ -z "${{ secrets.KUBERNETES_NAMESPACE_STAGE }}" ]; then MISSING_SECRETS+=("KUBERNETES_NAMESPACE_STAGE"); fi
+          if [ -z "${{ secrets.KUBERNETES_NAMESPACE_PROD }}" ]; then MISSING_SECRETS+=("KUBERNETES_NAMESPACE_PROD"); fi
           if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then MISSING_SECRETS+=("DOCKERHUB_USERNAME"); fi
           if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then MISSING_SECRETS+=("DOCKERHUB_TOKEN"); fi
           if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" ]; then MISSING_SECRETS+=("SPRING_CLOUD_CONFIG_SERVER_GIT_URI"); fi
@@ -161,6 +164,9 @@ jobs:
                 -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
                 -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
                 -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                -var="kubernetes_namespace_dev=${{ secrets.KUBERNETES_NAMESPACE_DEV }}" \
+                -var="kubernetes_namespace_stage=${{ secrets.KUBERNETES_NAMESPACE_STAGE }}" \
+                -var="kubernetes_namespace_prod=${{ secrets.KUBERNETES_NAMESPACE_PROD }}" \
                 -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                 -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                 -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
@@ -193,6 +199,9 @@ jobs:
                   -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
                   -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
                   -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                  -var="kubernetes_namespace_dev=${{ secrets.KUBERNETES_NAMESPACE_DEV }}" \
+                  -var="kubernetes_namespace_stage=${{ secrets.KUBERNETES_NAMESPACE_STAGE }}" \
+                  -var="kubernetes_namespace_prod=${{ secrets.KUBERNETES_NAMESPACE_PROD }}" \
                   -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                   -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                   -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
@@ -254,6 +263,9 @@ jobs:
                   -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
                   -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
                   -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                  -var="kubernetes_namespace_dev=${{ secrets.KUBERNETES_NAMESPACE_DEV }}" \
+                  -var="kubernetes_namespace_stage=${{ secrets.KUBERNETES_NAMESPACE_STAGE }}" \
+                  -var="kubernetes_namespace_prod=${{ secrets.KUBERNETES_NAMESPACE_PROD }}" \
                   -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                   -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                   -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
@@ -318,6 +330,9 @@ jobs:
                   -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
                   -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
                   -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+                  -var="kubernetes_namespace_dev=${{ secrets.KUBERNETES_NAMESPACE_DEV }}" \
+                  -var="kubernetes_namespace_stage=${{ secrets.KUBERNETES_NAMESPACE_STAGE }}" \
+                  -var="kubernetes_namespace_prod=${{ secrets.KUBERNETES_NAMESPACE_PROD }}" \
                   -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
                   -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
                   -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
@@ -356,6 +371,9 @@ jobs:
             -var="aks_cluster_name_stage=${{ secrets.AKS_CLUSTER_NAME_STAGE }}" \
             -var="azure_resource_group_prod=${{ secrets.AZURE_RESOURCE_GROUP_PROD }}" \
             -var="aks_cluster_name_prod=${{ secrets.AKS_CLUSTER_NAME_PROD }}" \
+            -var="kubernetes_namespace_dev=${{ secrets.KUBERNETES_NAMESPACE_DEV }}" \
+            -var="kubernetes_namespace_stage=${{ secrets.KUBERNETES_NAMESPACE_STAGE }}" \
+            -var="kubernetes_namespace_prod=${{ secrets.KUBERNETES_NAMESPACE_PROD }}" \
             -var="dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
             -var="dockerhub_token=${{ secrets.DOCKERHUB_TOKEN }}" \
             -var="azure_credential=${{ secrets.AZURE_CREDENTIAL }}" \
@@ -621,6 +639,9 @@ jobs:
               echo "- AKS-CLUSTER-NAME-STAGE" >> $GITHUB_STEP_SUMMARY
               echo "- AZURE-RESOURCE-GROUP-PROD" >> $GITHUB_STEP_SUMMARY
               echo "- AKS-CLUSTER-NAME-PROD" >> $GITHUB_STEP_SUMMARY
+              echo "- KUBERNETES-NAMESPACE-DEV" >> $GITHUB_STEP_SUMMARY
+              echo "- KUBERNETES-NAMESPACE-STAGE" >> $GITHUB_STEP_SUMMARY
+              echo "- KUBERNETES-NAMESPACE-PROD" >> $GITHUB_STEP_SUMMARY
               echo "- DOCKERHUB-USERNAME" >> $GITHUB_STEP_SUMMARY
               echo "- DOCKERHUB-TOKEN" >> $GITHUB_STEP_SUMMARY
               echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-URI" >> $GITHUB_STEP_SUMMARY
@@ -639,6 +660,9 @@ jobs:
             echo "- AKS-CLUSTER-NAME-STAGE" >> $GITHUB_STEP_SUMMARY
             echo "- AZURE-RESOURCE-GROUP-PROD" >> $GITHUB_STEP_SUMMARY
             echo "- AKS-CLUSTER-NAME-PROD" >> $GITHUB_STEP_SUMMARY
+            echo "- KUBERNETES-NAMESPACE-DEV" >> $GITHUB_STEP_SUMMARY
+            echo "- KUBERNETES-NAMESPACE-STAGE" >> $GITHUB_STEP_SUMMARY
+            echo "- KUBERNETES-NAMESPACE-PROD" >> $GITHUB_STEP_SUMMARY
             echo "- DOCKERHUB-USERNAME" >> $GITHUB_STEP_SUMMARY
             echo "- DOCKERHUB-TOKEN" >> $GITHUB_STEP_SUMMARY
             echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-URI" >> $GITHUB_STEP_SUMMARY

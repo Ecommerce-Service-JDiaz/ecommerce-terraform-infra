@@ -54,6 +54,21 @@ variable "aks_cluster_name_prod" {
   type        = string
 }
 
+variable "kubernetes_namespace_dev" {
+  description = "Nombre del namespace de Kubernetes para Dev"
+  type        = string
+}
+
+variable "kubernetes_namespace_stage" {
+  description = "Nombre del namespace de Kubernetes para Stage"
+  type        = string
+}
+
+variable "kubernetes_namespace_prod" {
+  description = "Nombre del namespace de Kubernetes para Prod"
+  type        = string
+}
+
 variable "dockerhub_username" {
   description = "Usuario de Docker Hub"
   type        = string

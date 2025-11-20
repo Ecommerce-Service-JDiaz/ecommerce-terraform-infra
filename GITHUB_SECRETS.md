@@ -31,6 +31,9 @@ Este documento contiene **TODOS** los secrets que debes configurar en GitHub par
 | `AKS_CLUSTER_NAME_STAGE` | Cluster AKS de Stage | `aks-cluster-stage` |
 | `AZURE_RESOURCE_GROUP_PROD` | Resource Group de Prod | `ecommerce-rg-prod` |
 | `AKS_CLUSTER_NAME_PROD` | Cluster AKS de Prod | `aks-cluster-prod` |
+| `KUBERNETES_NAMESPACE_DEV` | Namespace de Kubernetes para Dev | `ecommerce-dev` |
+| `KUBERNETES_NAMESPACE_STAGE` | Namespace de Kubernetes para Stage | `ecommerce-stage` |
+| `KUBERNETES_NAMESPACE_PROD` | Namespace de Kubernetes para Prod | `ecommerce-prod` |
 | `DOCKERHUB_USERNAME` | Usuario de Docker Hub | `sebastian411` |
 | `DOCKERHUB_TOKEN` | Token/Password de Docker Hub | `k(-_)=.?qvC4qdT` |
 | `SPRING_CLOUD_CONFIG_SERVER_GIT_URI` | URI del repositorio Git | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` |
@@ -40,7 +43,7 @@ Este documento contiene **TODOS** los secrets que debes configurar en GitHub par
 
 ---
 
-## 📋 Lista Completa de Secrets (22 Secrets)
+## 📋 Lista Completa de Secrets (25 Secrets)
 
 ### 🔑 1. Autenticación de Azure (Service Principal) - 4 Secrets
 
@@ -78,31 +81,39 @@ Este documento contiene **TODOS** los secrets que debes configurar en GitHub par
 | 15 | `AZURE_RESOURCE_GROUP_PROD` | Nombre del Resource Group de Prod | `ecommerce-rg-prod` | `ecommerce-rg-prod` |
 | 16 | `AKS_CLUSTER_NAME_PROD` | Nombre del cluster AKS de Prod | `aks-cluster-prod` | `aks-cluster-prod` |
 
-### 🐳 5. Docker Hub - 2 Secrets
+### 🏷️ 5. Kubernetes Namespaces - 3 Secrets
+
+| # | Secret Name | Descripción | Ejemplo | Valor Recomendado |
+|---|------------|-------------|---------|-------------------|
+| 17 | `KUBERNETES_NAMESPACE_DEV` | Nombre del namespace de Kubernetes para Dev | `ecommerce-dev` | `ecommerce-dev` |
+| 18 | `KUBERNETES_NAMESPACE_STAGE` | Nombre del namespace de Kubernetes para Stage | `ecommerce-stage` | `ecommerce-stage` |
+| 19 | `KUBERNETES_NAMESPACE_PROD` | Nombre del namespace de Kubernetes para Prod | `ecommerce-prod` | `ecommerce-prod` |
+
+### 🐳 6. Docker Hub - 2 Secrets
 
 | # | Secret Name | Descripción | Ejemplo | Cómo Obtenerlo |
 |---|------------|-------------|---------|----------------|
-| 17 | `DOCKERHUB_USERNAME` | Usuario de Docker Hub | `sebastian411` | Tu usuario de Docker Hub |
-| 18 | `DOCKERHUB_TOKEN` | Token/Password de Docker Hub | `k(-_)=.?qvC4qdT` | Tu token o password de Docker Hub |
+| 20 | `DOCKERHUB_USERNAME` | Usuario de Docker Hub | `sebastian411` | Tu usuario de Docker Hub |
+| 21 | `DOCKERHUB_TOKEN` | Token/Password de Docker Hub | `k(-_)=.?qvC4qdT` | Tu token o password de Docker Hub |
 
-### ☁️ 6. Spring Cloud Config Server - 2 Secrets
+### ☁️ 7. Spring Cloud Config Server - 2 Secrets
 
 | # | Secret Name | Descripción | Ejemplo | Valor Actual |
 |---|------------|-------------|---------|--------------|
-| 19 | `SPRING_CLOUD_CONFIG_SERVER_GIT_URI` | URI del repositorio Git | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` |
-| 20 | `SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL` | Rama por defecto del repositorio | `main` | `main` |
+| 22 | `SPRING_CLOUD_CONFIG_SERVER_GIT_URI` | URI del repositorio Git | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` |
+| 23 | `SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL` | Rama por defecto del repositorio | `main` | `main` |
 
-### 🔍 7. Eureka Client - 1 Secret
-
-| # | Secret Name | Descripción | Ejemplo | Notas |
-|---|------------|-------------|---------|-------|
-| 21 | `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | URL del servicio Eureka Client Default Zone | `http://eureka-server:8761/eureka/` | URL completa del servicio Eureka |
-
-### 🔧 8. Opcional - 1 Secret
+### 🔍 8. Eureka Client - 1 Secret
 
 | # | Secret Name | Descripción | Ejemplo | Notas |
 |---|------------|-------------|---------|-------|
-| 22 | `AZURE_CREDENTIAL` | Credencial adicional de Azure (JSON) | `{"clientId":"...","clientSecret":"..."}` | Opcional, solo si necesitas credenciales adicionales |
+| 24 | `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | URL del servicio Eureka Client Default Zone | `http://eureka-server:8761/eureka/` | URL completa del servicio Eureka |
+
+### 🔧 9. Opcional - 1 Secret
+
+| # | Secret Name | Descripción | Ejemplo | Notas |
+|---|------------|-------------|---------|-------|
+| 25 | `AZURE_CREDENTIAL` | Credencial adicional de Azure (JSON) | `{"clientId":"...","clientSecret":"..."}` | Opcional, solo si necesitas credenciales adicionales |
 
 ---
 
@@ -134,6 +145,11 @@ Usa este checklist para asegurarte de que tienes todos los secrets configurados:
 - [ ] `AZURE_RESOURCE_GROUP_PROD`
 - [ ] `AKS_CLUSTER_NAME_PROD`
 
+### Kubernetes Namespaces (3)
+- [ ] `KUBERNETES_NAMESPACE_DEV`
+- [ ] `KUBERNETES_NAMESPACE_STAGE`
+- [ ] `KUBERNETES_NAMESPACE_PROD`
+
 ### Docker Hub (2)
 - [ ] `DOCKERHUB_USERNAME`
 - [ ] `DOCKERHUB_TOKEN`
@@ -148,7 +164,7 @@ Usa este checklist para asegurarte de que tienes todos los secrets configurados:
 ### Opcional (1)
 - [ ] `AZURE_CREDENTIAL` (opcional)
 
-**Total: 21 Secrets Requeridos + 1 Opcional = 22 Secrets**
+**Total: 24 Secrets Requeridos + 1 Opcional = 25 Secrets**
 
 ---
 
@@ -175,6 +191,13 @@ AKS_CLUSTER_NAME_STAGE = "aks-cluster-stage"
 AKS_CLUSTER_NAME_PROD = "aks-cluster-prod"
 ```
 
+### Kubernetes Namespaces
+```
+KUBERNETES_NAMESPACE_DEV = "ecommerce-dev"
+KUBERNETES_NAMESPACE_STAGE = "ecommerce-stage"
+KUBERNETES_NAMESPACE_PROD = "ecommerce-prod"
+```
+
 ### Spring Cloud Config
 ```
 SPRING_CLOUD_CONFIG_SERVER_GIT_URI = "https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server"
@@ -197,7 +220,7 @@ DOCKERHUB_TOKEN = "<tu-token>"
 ## 🔍 Cómo Verificar que los Secrets Están Configurados
 
 1. Ve a **Settings** → **Secrets and variables** → **Actions**
-2. Deberías ver todos los 21 secrets requeridos listados
+2. Deberías ver todos los 24 secrets requeridos listados
 3. Si falta alguno, el workflow fallará con un mensaje específico indicando cuál falta
 
 ---
