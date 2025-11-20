@@ -45,6 +45,8 @@ module "keyvault" {
   spring_cloud_config_server_git_uri         = var.spring_cloud_config_server_git_uri
   spring_cloud_config_server_git_default_label = var.spring_cloud_config_server_git_default_label
 
+  eureka_client_serviceurl_defaultzone = var.eureka_client_serviceurl_defaultzone
+
   tags = var.tags
 }
 

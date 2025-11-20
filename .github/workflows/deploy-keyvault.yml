@@ -52,6 +52,7 @@ jobs:
           if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then MISSING_SECRETS+=("DOCKERHUB_TOKEN"); fi
           if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" ]; then MISSING_SECRETS+=("SPRING_CLOUD_CONFIG_SERVER_GIT_URI"); fi
           if [ -z "${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" ]; then MISSING_SECRETS+=("SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL"); fi
+          if [ -z "${{ secrets.EUREKA_CLIENT_SERVICEURL_DEFAULTZONE }}" ]; then MISSING_SECRETS+=("EUREKA_CLIENT_SERVICEURL_DEFAULTZONE"); fi
           if [ -z "${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" ]; then MISSING_SECRETS+=("AZURE_CREDENTIAL_OBJECT_ID"); fi
           
           if [ ${#MISSING_SECRETS[@]} -gt 0 ]; then
@@ -166,6 +167,7 @@ jobs:
                 -var="azure_credential_object_id=${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" \
                 -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                 -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                -var="eureka_client_serviceurl_defaultzone=${{ secrets.EUREKA_CLIENT_SERVICEURL_DEFAULTZONE }}" \
                 module.keyvault.azurerm_resource_group.global \
                 "$RESOURCE_GROUP_ID" || echo "⚠️ No se pudo importar el Resource Group"
             else
@@ -197,6 +199,7 @@ jobs:
                   -var="azure_credential_object_id=${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" \
                   -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                   -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                  -var="eureka_client_serviceurl_defaultzone=${{ secrets.EUREKA_CLIENT_SERVICEURL_DEFAULTZONE }}" \
                   module.keyvault.azurerm_key_vault.global \
                   "$KEY_VAULT_ID" || echo "⚠️ No se pudo importar el Key Vault"
               else
@@ -257,6 +260,7 @@ jobs:
                   -var="azure_credential_object_id=${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" \
                   -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                   -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                  -var="eureka_client_serviceurl_defaultzone=${{ secrets.EUREKA_CLIENT_SERVICEURL_DEFAULTZONE }}" \
                   module.keyvault.azurerm_key_vault_access_policy.service_principal \
                   "$ACCESS_POLICY_ID" || echo "⚠️ No se pudo importar (puede que ya esté en el estado o necesite actualización)"
               else
@@ -320,6 +324,7 @@ jobs:
                   -var="azure_credential_object_id=${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" \
                   -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
                   -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+                  -var="eureka_client_serviceurl_defaultzone=${{ secrets.EUREKA_CLIENT_SERVICEURL_DEFAULTZONE }}" \
                   module.keyvault.azurerm_key_vault_access_policy.azure_credential[0] \
                   "$ACCESS_POLICY_ID" || echo "⚠️ No se pudo importar (puede que ya esté en el estado o necesite actualización)"
               else
@@ -357,6 +362,7 @@ jobs:
             -var="azure_credential_object_id=${{ secrets.AZURE_CREDENTIAL_OBJECT_ID }}" \
             -var="spring_cloud_config_server_git_uri=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_URI }}" \
             -var="spring_cloud_config_server_git_default_label=${{ secrets.SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL }}" \
+            -var="eureka_client_serviceurl_defaultzone=${{ secrets.EUREKA_CLIENT_SERVICEURL_DEFAULTZONE }}" \
             -out=tfplan
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -619,6 +625,7 @@ jobs:
               echo "- DOCKERHUB-TOKEN" >> $GITHUB_STEP_SUMMARY
               echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-URI" >> $GITHUB_STEP_SUMMARY
               echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-DEFAULT-LABEL" >> $GITHUB_STEP_SUMMARY
+              echo "- EUREKA-CLIENT-SERVICEURL-DEFAULTZONE" >> $GITHUB_STEP_SUMMARY
               if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
                 echo "- AZURE-CREDENTIAL" >> $GITHUB_STEP_SUMMARY
               fi
@@ -636,6 +643,7 @@ jobs:
             echo "- DOCKERHUB-TOKEN" >> $GITHUB_STEP_SUMMARY
             echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-URI" >> $GITHUB_STEP_SUMMARY
             echo "- SPRING-CLOUD-CONFIG-SERVER-GIT-DEFAULT-LABEL" >> $GITHUB_STEP_SUMMARY
+            echo "- EUREKA-CLIENT-SERVICEURL-DEFAULTZONE" >> $GITHUB_STEP_SUMMARY
             if [ -n "${{ secrets.AZURE_CREDENTIAL }}" ]; then
               echo "- AZURE-CREDENTIAL" >> $GITHUB_STEP_SUMMARY
             fi

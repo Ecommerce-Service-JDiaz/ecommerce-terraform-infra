@@ -90,6 +90,11 @@ variable "spring_cloud_config_server_git_default_label" {
   type        = string
 }
 
+variable "eureka_client_serviceurl_defaultzone" {
+  description = "URL del servicio Eureka Client Default Zone"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags a aplicar a los recursos"
   type        = map(string)

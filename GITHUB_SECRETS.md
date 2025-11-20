@@ -35,11 +35,12 @@ Este documento contiene **TODOS** los secrets que debes configurar en GitHub par
 | `DOCKERHUB_TOKEN` | Token/Password de Docker Hub | `k(-_)=.?qvC4qdT` |
 | `SPRING_CLOUD_CONFIG_SERVER_GIT_URI` | URI del repositorio Git | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` |
 | `SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL` | Rama por defecto del repositorio | `main` |
+| `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | URL del servicio Eureka Client Default Zone | `http://eureka-server:8761/eureka/` |
 | `AZURE_CREDENTIAL` | Credencial adicional de Azure (JSON) | `{"clientId":"...","clientSecret":"..."}` |
 
 ---
 
-## 📋 Lista Completa de Secrets (21 Secrets)
+## 📋 Lista Completa de Secrets (22 Secrets)
 
 ### 🔑 1. Autenticación de Azure (Service Principal) - 4 Secrets
 
@@ -91,11 +92,17 @@ Este documento contiene **TODOS** los secrets que debes configurar en GitHub par
 | 19 | `SPRING_CLOUD_CONFIG_SERVER_GIT_URI` | URI del repositorio Git | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` | `https://github.com/Ecommerce-Service-JDiaz/ecommerce-cloud-config-server` |
 | 20 | `SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL` | Rama por defecto del repositorio | `main` | `main` |
 
-### 🔧 7. Opcional - 1 Secret
+### 🔍 7. Eureka Client - 1 Secret
 
 | # | Secret Name | Descripción | Ejemplo | Notas |
 |---|------------|-------------|---------|-------|
-| 21 | `AZURE_CREDENTIAL` | Credencial adicional de Azure (JSON) | `{"clientId":"...","clientSecret":"..."}` | Opcional, solo si necesitas credenciales adicionales |
+| 21 | `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | URL del servicio Eureka Client Default Zone | `http://eureka-server:8761/eureka/` | URL completa del servicio Eureka |
+
+### 🔧 8. Opcional - 1 Secret
+
+| # | Secret Name | Descripción | Ejemplo | Notas |
+|---|------------|-------------|---------|-------|
+| 22 | `AZURE_CREDENTIAL` | Credencial adicional de Azure (JSON) | `{"clientId":"...","clientSecret":"..."}` | Opcional, solo si necesitas credenciales adicionales |
 
 ---
 
@@ -135,10 +142,13 @@ Usa este checklist para asegurarte de que tienes todos los secrets configurados:
 - [ ] `SPRING_CLOUD_CONFIG_SERVER_GIT_URI`
 - [ ] `SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL`
 
+### Eureka Client (1)
+- [ ] `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE`
+
 ### Opcional (1)
 - [ ] `AZURE_CREDENTIAL` (opcional)
 
-**Total: 20 Secrets Requeridos + 1 Opcional = 21 Secrets**
+**Total: 21 Secrets Requeridos + 1 Opcional = 22 Secrets**
 
 ---
 
@@ -171,6 +181,11 @@ SPRING_CLOUD_CONFIG_SERVER_GIT_URI = "https://github.com/Ecommerce-Service-JDiaz
 SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL = "main"
 ```
 
+### Eureka Client
+```
+EUREKA_CLIENT_SERVICEURL_DEFAULTZONE = "http://eureka-server:8761/eureka/"
+```
+
 ### Docker Hub
 ```
 DOCKERHUB_USERNAME = "sebastian411"
@@ -182,7 +197,7 @@ DOCKERHUB_TOKEN = "<tu-token>"
 ## 🔍 Cómo Verificar que los Secrets Están Configurados
 
 1. Ve a **Settings** → **Secrets and variables** → **Actions**
-2. Deberías ver todos los 20 secrets requeridos listados
+2. Deberías ver todos los 21 secrets requeridos listados
 3. Si falta alguno, el workflow fallará con un mensaje específico indicando cuál falta
 
 ---

@@ -306,3 +306,11 @@ resource "azurerm_key_vault_secret" "spring_cloud_config_server_git_default_labe
   depends_on = [azurerm_key_vault_access_policy.service_principal]
 }
 
+resource "azurerm_key_vault_secret" "eureka_client_serviceurl_defaultzone" {
+  name         = "EUREKA-CLIENT-SERVICEURL-DEFAULTZONE"
+  value        = var.eureka_client_serviceurl_defaultzone
+  key_vault_id = azurerm_key_vault.global.id
+
+  depends_on = [azurerm_key_vault_access_policy.service_principal]
+}
+
